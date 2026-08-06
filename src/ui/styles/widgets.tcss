@@ -1,0 +1,14 @@
+/* Widget & Component Styles */
+
+Button {
+    min-width: 16;
+}
+
+.status-online {
+    color: $success;
+    text-style: bold;
+}
+
+.status-offline {
+    color: $error;
+}

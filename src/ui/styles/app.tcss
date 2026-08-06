@@ -1,0 +1,34 @@
+/* Global App & BaseLayout Styles */
+
+Screen {
+    background: $background;
+}
+
+BaseLayout {
+    layout: vertical;
+    height: 100%;
+    width: 100%;
+    padding: 1 2;
+}
+
+#main-viewport {
+    height: 1fr;
+    width: 100%;
+    align: center middle;
+}
+
+Header {
+    dock: top;
+    height: 1;
+    content-align: center middle;
+}
+
+HeaderTitle {
+    content-align: center middle;
+    text-align: center;
+}
+
+Footer {
+    dock: bottom;
+    height: 1;
+}

@@ -1,0 +1,28 @@
+/* Screen Styles - HomeScreen */
+
+HomeScreen {
+    align: center middle;
+    height: 100%;
+    width: 100%;
+}
+
+#welcome-card {
+    width: 60;
+    height: auto;
+    border: heavy $accent;
+    background: $surface;
+    padding: 2 4;
+    align: center middle;
+}
+
+#welcome-title {
+    text-style: bold;
+    color: $accent;
+    content-align: center middle;
+    margin-bottom: 1;
+}
+
+#welcome-subtitle {
+    color: $text-muted;
+    content-align: center middle;
+}
