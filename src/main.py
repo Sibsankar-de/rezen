@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+import asyncio
 
 # Ensure src directory is in sys.path when running main.py directly
 src_dir = Path(__file__).resolve().parent

@@ -1,9 +1,11 @@
+import pytest
 from unittest.mock import patch
 
 from main import main
 
 
-def test_main_calls_cli():
+@pytest.mark.asyncio
+async def test_main_calls_cli():
     with patch("main.cli") as mock_cli:
-        main()
+        await main()
         mock_cli.assert_called_once()
