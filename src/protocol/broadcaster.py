@@ -16,7 +16,6 @@ class Broadcaster:
     Low-level UDP transport for the Rezen LAN Protocol.
 
     Responsibilities
-    ----------------
     - Own the UDP socket
     - Send unicast packets
     - Send broadcast packets

@@ -1,28 +1,91 @@
-/* Screen Styles - HomeScreen */
+/* Screen Styles - HomeScreen, BroadcastScreen, DiscoverScreen */
 
-HomeScreen {
+HomeScreen, BroadcastScreen, DiscoverScreen {
     align: center middle;
     height: 100%;
     width: 100%;
 }
 
-#welcome-card {
-    width: 60;
+#welcome-card, #broadcast-card, #discover-card {
+    width: 70;
     height: auto;
     border: heavy $accent;
     background: $surface;
-    padding: 2 4;
+    padding: 1 2;
     align: center middle;
 }
 
-#welcome-title {
+#welcome-title, #broadcast-title, #discover-title {
     text-style: bold;
     color: $accent;
     content-align: center middle;
     margin-bottom: 1;
 }
 
-#welcome-subtitle {
+#welcome-subtitle, #broadcast-subtitle, #discover-subtitle {
     color: $text-muted;
     content-align: center middle;
+    margin-bottom: 1;
+}
+
+#home-options {
+    width: 100%;
+    align: center middle;
+    margin-top: 1;
+}
+
+#home-options Button {
+    margin: 1 0;
+    width: 32;
+}
+
+#broadcast-info {
+    color: $text;
+    content-align: center middle;
+    margin: 1 0;
+    padding: 1;
+    border: dashed $accent;
+}
+
+#scan-status {
+    color: $accent;
+    content-align: center middle;
+    margin-bottom: 1;
+}
+
+#device-list-container {
+    height: 6;
+    width: 100%;
+    border: solid $accent;
+    margin-bottom: 1;
+    background: $panel;
+}
+
+#device-list-view {
+    height: auto;
+    width: 100%;
+}
+
+DeviceListItem {
+    padding: 1 2;
+    height: auto;
+}
+
+.device-item-title {
+    text-style: bold;
+    color: $accent;
+}
+
+.device-item-subtitle {
+    color: $text-muted;
+}
+
+#discover-actions {
+    width: 100%;
+    height: auto;
+    align: center middle;
+}
+
+#discover-actions Button {
+    margin: 0 1;
 }

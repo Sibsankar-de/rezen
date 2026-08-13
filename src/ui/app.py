@@ -2,7 +2,7 @@ from pathlib import Path
 from textual.app import App
 from textual.binding import Binding
 
-from .screens.home import HomeScreen
+from .screens import BroadcastScreen, DiscoverScreen, HomeScreen
 
 STYLES_DIR = Path(__file__).parent / "styles"
 
@@ -24,6 +24,8 @@ class RezenApp(App):
 
     SCREENS = {
         "home": HomeScreen,
+        "broadcast": BroadcastScreen,
+        "discover": DiscoverScreen,
     }
 
     def on_mount(self) -> None:

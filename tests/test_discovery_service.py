@@ -15,7 +15,11 @@ from services.discovery_service import DiscoveryService
 
 def test_discover_devices_with_device_payload():
     mock_broadcaster = MagicMock()
-    service = DiscoveryService(broadcaster=mock_broadcaster, device_id="local_id", port=45871)
+    mock_dev_service = MagicMock()
+    local_device = Device(id="local_id", name="Local", hostname="localhost", ip="127.0.0.1", port=45871, os="Linux")
+    mock_dev_service.get_current_device.return_value = local_device
+
+    service = DiscoveryService(broadcaster=mock_broadcaster, device_service=mock_dev_service)
 
     remote_device = Device(
         id="remote_device_1",
@@ -54,22 +58,18 @@ def test_discover_devices_with_device_payload():
 
 def test_discover_devices_ignores_self():
     mock_broadcaster = MagicMock()
-    service = DiscoveryService(broadcaster=mock_broadcaster, device_id="local_id")
+    mock_dev_service = MagicMock()
+    local_device = Device(id="local_id", name="Local Host", hostname="localhost", ip="127.0.0.1", port=45871, os="Linux")
+    mock_dev_service.get_current_device.return_value = local_device
+
+    service = DiscoveryService(broadcaster=mock_broadcaster, device_service=mock_dev_service)
 
     def capture_subscribe(handler):
-        self_device = Device(
-            id="local_id",
-            name="Local Host",
-            hostname="localhost",
-            ip="127.0.0.1",
-            port=45871,
-            os="Linux",
-        )
         self_packet = Packet(
             type=PacketType.DISCOVER_RESPONSE,
             version="1",
             device_id="local_id",
-            payload=self_device,
+            payload=local_device,
         )
         handler(self_packet, ("127.0.0.1", 45871))
 

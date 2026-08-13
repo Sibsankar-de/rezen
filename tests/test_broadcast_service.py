@@ -8,13 +8,18 @@ src_dir = Path(__file__).resolve().parent.parent / "src"
 if str(src_dir) not in sys.path:
     sys.path.insert(0, str(src_dir))
 
+from models.device import Device
 from protocol.packet import Packet, PacketType
 from services.broadcast_service import BroadcastService
 
 
 def test_broadcast_service_start_stop():
     mock_broadcaster = MagicMock()
-    service = BroadcastService(broadcaster=mock_broadcaster)
+    mock_dev_service = MagicMock()
+    device = Device(id="local_dev", name="Local Device", hostname="host", ip="127.0.0.1", port=45871, os="Linux")
+    mock_dev_service.get_current_device.return_value = device
+
+    service = BroadcastService(broadcaster=mock_broadcaster, device_service=mock_dev_service)
 
     service.start_private_broadcast()
     mock_broadcaster.start.assert_called_once()
@@ -27,7 +32,11 @@ def test_broadcast_service_start_stop():
 
 def test_broadcast_service_responds_to_discover():
     mock_broadcaster = MagicMock()
-    service = BroadcastService(broadcaster=mock_broadcaster, device_id="local_dev")
+    mock_dev_service = MagicMock()
+    device = Device(id="local_dev", name="Local Device", hostname="host", ip="127.0.0.1", port=45871, os="Linux")
+    mock_dev_service.get_current_device.return_value = device
+
+    service = BroadcastService(broadcaster=mock_broadcaster, device_service=mock_dev_service)
 
     subscribed_handler = None
 
@@ -51,12 +60,17 @@ def test_broadcast_service_responds_to_discover():
     sent_packet, target_addr = mock_broadcaster.send.call_args[0]
     assert sent_packet.type == PacketType.DISCOVER_RESPONSE
     assert sent_packet.device_id == "local_dev"
+    assert sent_packet.payload == device
     assert target_addr == ("192.168.1.50", 45871)
 
 
 def test_broadcast_service_broadcast_custom_packet():
     mock_broadcaster = MagicMock()
-    service = BroadcastService(broadcaster=mock_broadcaster, device_id="test_dev")
+    mock_dev_service = MagicMock()
+    device = Device(id="test_dev", name="Test Device", hostname="host", ip="127.0.0.1", port=45871, os="Linux")
+    mock_dev_service.get_current_device.return_value = device
+
+    service = BroadcastService(broadcaster=mock_broadcaster, device_service=mock_dev_service)
 
     custom_packet = Packet(
         type=PacketType.PING,
@@ -71,10 +85,15 @@ def test_broadcast_service_broadcast_custom_packet():
 
 def test_broadcast_service_broadcast_default_packet():
     mock_broadcaster = MagicMock()
-    service = BroadcastService(broadcaster=mock_broadcaster, device_id="test_dev")
+    mock_dev_service = MagicMock()
+    device = Device(id="test_dev", name="Test Device", hostname="host", ip="127.0.0.1", port=45871, os="Linux")
+    mock_dev_service.get_current_device.return_value = device
+
+    service = BroadcastService(broadcaster=mock_broadcaster, device_service=mock_dev_service)
 
     service.broadcast()
     mock_broadcaster.broadcast.assert_called_once()
     sent_packet = mock_broadcaster.broadcast.call_args[0][0]
     assert sent_packet.type == PacketType.DISCOVER
     assert sent_packet.device_id == "test_dev"
+    assert sent_packet.payload == device

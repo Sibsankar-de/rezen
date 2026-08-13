@@ -1,11 +1,11 @@
 import time
-import uuid
 from typing import Optional
 
 from models.device import Device
 from protocol.broadcaster import Broadcaster
 from protocol.packet import Packet, PacketType
 from protocol.protocol import RLP
+from services.device_service import DeviceService
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -17,12 +17,18 @@ class DiscoveryService:
     def __init__(
         self,
         broadcaster: Optional[Broadcaster] = None,
-        device_id: Optional[str] = None,
-        port: int = RLP.DEFAULT_PORT,
+        device_service: Optional[DeviceService] = None,
     ):
+        self.device_service = device_service or DeviceService()
         self.broadcaster = broadcaster
-        self.device_id = device_id or str(uuid.uuid4())
-        self.port = port
+
+    @property
+    def device_id(self) -> str:
+        return self.device_service.get_current_device().id
+
+    @property
+    def port(self) -> int:
+        return self.device_service.get_current_device().port
 
     def collect_packets(
         self, timeout: float = 2.0
