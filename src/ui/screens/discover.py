@@ -43,7 +43,7 @@ class DiscoverScreen(Screen):
                     with Vertical(id="discover-card"):
                         yield Label("🔍 Discovered Devices", id="discover-title")
                         yield Label(
-                            "Scanning local network for active Rezen devices (auto-rescans every 10s)...",
+                            "Scanning local network for active Rezen devices (auto-rescans every 3s)...",
                             id="discover-subtitle",
                         )
 
@@ -59,9 +59,9 @@ class DiscoverScreen(Screen):
                             )
 
     def on_mount(self) -> None:
-        """Trigger initial device scan and schedule periodic rescan every 10 seconds."""
+        """Trigger initial device scan and schedule periodic rescan every 3 seconds."""
         self.run_scan()
-        self._scan_timer = self.set_interval(10.0, self.run_scan)
+        self._scan_timer = self.set_interval(3.0, self.run_scan)
 
     def on_unmount(self) -> None:
         """Stop periodic rescan timer when screen is unmounted."""
@@ -74,7 +74,7 @@ class DiscoverScreen(Screen):
         """Perform network device discovery in a background worker thread."""
         self.app.call_from_thread(self._set_status, "Scanning network for devices...")
         try:
-            devices = self.discovery_service.discover_devices(timeout=1.5)
+            devices = self.discovery_service.discover_devices(timeout=1.0)
             self._discovered_devices = devices
             self.app.call_from_thread(self._update_device_list, devices)
         except Exception as err:

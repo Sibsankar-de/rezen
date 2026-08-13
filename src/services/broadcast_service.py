@@ -1,3 +1,5 @@
+import threading
+import time
 from typing import Optional
 
 from models.device import Device
@@ -17,9 +19,13 @@ class BroadcastService:
         self,
         broadcaster: Optional[Broadcaster] = None,
         device_service: Optional[DeviceService] = None,
+        interval: float = 2.0,
     ):
         self.device_service = device_service or DeviceService()
         self._broadcaster = broadcaster
+        self.interval = interval
+        self._stop_event = threading.Event()
+        self._loop_thread: Optional[threading.Thread] = None
 
     @property
     def device(self) -> Device:
@@ -30,24 +36,48 @@ class BroadcastService:
         return self.device.port
 
     def start_private_broadcast(self) -> None:
-        """Start the transport broadcaster and listen for DISCOVER requests to reply with DISCOVER_RESPONSE."""
+        """Start transport broadcaster, listen for DISCOVER requests, and continuously send presence broadcasts every `self.interval` seconds."""
         if self._broadcaster is None:
             self._broadcaster = Broadcaster(port=self.port)
         self._broadcaster.subscribe(self._on_packet_received)
         self._broadcaster.start()
-        logger.info(f"BroadcastService started on port {self.port}")
+
+        self._stop_event.clear()
+        if self._loop_thread is None or not self._loop_thread.is_alive():
+            self._loop_thread = threading.Thread(
+                target=self._periodic_broadcast_loop,
+                daemon=True,
+            )
+            self._loop_thread.start()
+
+        logger.info(f"BroadcastService started on port {self.port} with {self.interval}s interval.")
 
     def stop_private_broadcast(self) -> None:
-        """Stop the transport broadcaster."""
+        """Stop continuous broadcasting loop and transport broadcaster."""
+        self._stop_event.set()
+        if self._loop_thread and self._loop_thread.is_alive():
+            self._loop_thread.join(timeout=1.0)
+            self._loop_thread = None
+
         if self._broadcaster is not None:
             self._broadcaster.unsubscribe(self._on_packet_received)
             self._broadcaster.stop()
             self._broadcaster = None
             logger.info("BroadcastService stopped")
 
+    def _periodic_broadcast_loop(self) -> None:
+        """Background thread loop broadcasting presence DISCOVER packets every `self.interval` seconds."""
+        while not self._stop_event.is_set():
+            try:
+                self.broadcast()
+            except Exception as err:
+                logger.error(f"Error in periodic broadcast loop: {err}")
+            self._stop_event.wait(self.interval)
+
     def _on_packet_received(self, packet: Packet, address: tuple[str, int]) -> None:
         """Handle incoming network packets. Responds to DISCOVER packets with DISCOVER_RESPONSE."""
-        if packet.device_id == self.device.id:
+        current_device = self.device
+        if packet.device_id == current_device.id:
             return
 
         if packet.type == PacketType.DISCOVER:
@@ -55,8 +85,8 @@ class BroadcastService:
             response_packet = Packet(
                 type=PacketType.DISCOVER_RESPONSE,
                 version=str(RLP.VERSION),
-                device_id=self.device.id,
-                payload=self.device,
+                device_id=current_device.id,
+                payload=current_device,
             )
             if self._broadcaster:
                 self._broadcaster.send(response_packet, address)
@@ -67,14 +97,16 @@ class BroadcastService:
         If no packet is provided, constructs a default DISCOVER presence packet with Device payload.
         """
         if self._broadcaster is None:
-            self.start_private_broadcast()
+            self._broadcaster = Broadcaster(port=self.port)
+            self._broadcaster.start()
 
+        current_device = self.device
         if packet is None:
             packet = Packet(
                 type=PacketType.DISCOVER,
                 version=str(RLP.VERSION),
-                device_id=self.device.id,
-                payload=self.device,
+                device_id=current_device.id,
+                payload=current_device,
             )
 
         logger.info(f"Broadcasting packet type='{packet.type}' over the network")

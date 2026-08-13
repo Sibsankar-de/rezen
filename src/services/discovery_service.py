@@ -12,7 +12,7 @@ logger = get_logger(__name__)
 
 
 class DiscoveryService:
-    """Service to discover Rezen devices on the local network by collecting network packets."""
+    """Service to discover Rezen devices on the local network by sending discovery queries and collecting network packets."""
 
     def __init__(
         self,
@@ -31,10 +31,10 @@ class DiscoveryService:
         return self.device_service.get_current_device().port
 
     def collect_packets(
-        self, timeout: float = 2.0
+        self, timeout: float = 1.0
     ) -> list[tuple[Packet, tuple[str, int]]]:
         """
-        Listen on the network for `timeout` seconds and return a list of collected (packet, address) tuples.
+        Actively broadcast a DISCOVER packet and listen on the network for `timeout` seconds to collect responses.
         """
         collected: list[tuple[Packet, tuple[str, int]]] = []
 
@@ -54,6 +54,16 @@ class DiscoveryService:
 
         try:
             broadcaster.subscribe(handle_packet)
+            
+            # Actively broadcast a DISCOVER query packet asking all active LAN devices to respond
+            query_packet = Packet(
+                type=PacketType.DISCOVER,
+                version=str(RLP.VERSION),
+                device_id=self.device_id,
+                payload=self.device_service.get_current_device(),
+            )
+            broadcaster.broadcast(query_packet)
+            
             time.sleep(timeout)
         finally:
             broadcaster.unsubscribe(handle_packet)
@@ -63,8 +73,8 @@ class DiscoveryService:
         logger.info(f"Collected {len(collected)} packet(s) from network.")
         return collected
 
-    def discover_devices(self, timeout: float = 2.0) -> list[Device]:
-        """Collect network packets and return a list of discovered devices."""
+    def discover_devices(self, timeout: float = 1.0) -> list[Device]:
+        """Actively scan network packets and return a list of discovered devices."""
         discovered: dict[str, Device] = {}
         collected_packets = self.collect_packets(timeout=timeout)
 

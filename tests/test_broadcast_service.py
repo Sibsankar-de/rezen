@@ -62,6 +62,7 @@ def test_broadcast_service_responds_to_discover():
     assert sent_packet.device_id == "local_dev"
     assert sent_packet.payload == device
     assert target_addr == ("192.168.1.50", 45871)
+    service.stop_private_broadcast()
 
 
 def test_broadcast_service_broadcast_custom_packet():
