@@ -3,6 +3,8 @@ import socket
 import threading
 from dataclasses import asdict
 from typing import Callable
+import ipaddress
+import psutil
 
 from protocol.packet import Packet
 from protocol.protocol import RLP
@@ -87,7 +89,7 @@ class Broadcaster:
 
         self._send(
             packet,
-            (RLP.BROADCAST_IP, self._port),
+            (self.get_broadcast_address(), self._port),
         )
 
     def send(
@@ -140,3 +142,26 @@ class Broadcaster:
 
         raw = PacketSerializer.loads(data.decode())
         return raw
+
+    @staticmethod
+    def get_broadcast_address() -> str:
+        interfaces = psutil.net_if_addrs()
+
+        for interface_name, addresses in interfaces.items():
+            for address in addresses:
+                if address.family == socket.AF_INET:
+                    ip = address.address
+                    netmask = address.netmask
+
+                    # Ignore localhost
+                    if ip.startswith("127."):
+                        continue
+
+                    network = ipaddress.IPv4Network(
+                        f"{ip}/{netmask}",
+                        strict=False,
+                    )
+
+                    return str(network.broadcast_address)
+
+        raise RuntimeError("No suitable IPv4 network interface found")
