@@ -54,16 +54,6 @@ class DiscoveryService:
 
         try:
             broadcaster.subscribe(handle_packet)
-            
-            # Actively broadcast a DISCOVER query packet asking all active LAN devices to respond
-            query_packet = Packet(
-                type=PacketType.DISCOVER,
-                version=str(RLP.VERSION),
-                device_id=self.device_id,
-                payload=self.device_service.get_current_device(),
-            )
-            broadcaster.broadcast(query_packet)
-            
             time.sleep(timeout)
         finally:
             broadcaster.unsubscribe(handle_packet)

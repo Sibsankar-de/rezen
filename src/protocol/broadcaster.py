@@ -84,13 +84,14 @@ class Broadcaster:
     # Sending
     def broadcast(self, packet: Packet) -> None:
         """
-        Broadcast a packet to all devices on the LAN.
+        Broadcast a packet to all devices on the LAN across all active network interfaces.
         """
-
-        self._send(
-            packet,
-            (self.get_broadcast_address(), self._port),
-        )
+        broadcast_ips = self.get_broadcast_addresses()
+        for ip in broadcast_ips:
+            try:
+                self._send(packet, (ip, self._port))
+            except Exception:
+                continue
 
     def send(
         self,
@@ -144,24 +145,46 @@ class Broadcaster:
         return raw
 
     @staticmethod
+    def get_broadcast_addresses() -> list[str]:
+        """
+        Return a list of all active IPv4 broadcast addresses across available network interfaces,
+        including 255.255.255.255 as a global fallback.
+        """
+        addresses_to_broadcast = {"255.255.255.255", RLP.BROADCAST_IP}
+        try:
+            interfaces = psutil.net_if_addrs()
+
+            for interface_name, addresses in interfaces.items():
+                for address in addresses:
+                    if address.family == socket.AF_INET:
+                        ip = address.address
+                        netmask = address.netmask
+
+                        # Ignore loopback
+                        if ip.startswith("127."):
+                            continue
+
+                        # If broadcast is explicitly reported by OS
+                        if getattr(address, "broadcast", None):
+                            addresses_to_broadcast.add(address.broadcast)
+
+                        if netmask:
+                            try:
+                                network = ipaddress.IPv4Network(
+                                    f"{ip}/{netmask}",
+                                    strict=False,
+                                )
+                                addresses_to_broadcast.add(str(network.broadcast_address))
+                            except Exception:
+                                pass
+        except Exception:
+            pass
+
+        return list(addresses_to_broadcast)
+
+    @staticmethod
     def get_broadcast_address() -> str:
-        interfaces = psutil.net_if_addrs()
+        """Return the primary broadcast address or global fallback."""
+        addresses = Broadcaster.get_broadcast_addresses()
+        return addresses[0] if addresses else "255.255.255.255"
 
-        for interface_name, addresses in interfaces.items():
-            for address in addresses:
-                if address.family == socket.AF_INET:
-                    ip = address.address
-                    netmask = address.netmask
-
-                    # Ignore localhost
-                    if ip.startswith("127."):
-                        continue
-
-                    network = ipaddress.IPv4Network(
-                        f"{ip}/{netmask}",
-                        strict=False,
-                    )
-
-                    return str(network.broadcast_address)
-
-        raise RuntimeError("No suitable IPv4 network interface found")
