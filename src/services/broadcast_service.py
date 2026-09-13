@@ -81,7 +81,7 @@ class BroadcastService:
             return
 
         if packet.type == PacketType.DISCOVER:
-            logger.info(f"Received DISCOVER from {packet.device_id} at {address}. Replying with DISCOVER_RESPONSE.")
+            logger.debug(f"Received DISCOVER from {packet.device_id} at {address}. Replying with DISCOVER_RESPONSE.")
             response_packet = Packet(
                 type=PacketType.DISCOVER_RESPONSE,
                 version=str(RLP.VERSION),

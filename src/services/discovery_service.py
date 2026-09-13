@@ -34,7 +34,7 @@ class DiscoveryService:
         self, timeout: float = 1.0
     ) -> list[tuple[Packet, tuple[str, int]]]:
         """
-        Actively broadcast a DISCOVER packet and listen on the network for `timeout` seconds to collect responses.
+        Listen on the network for `timeout` seconds to collect incoming presence/broadcast packets.
         """
         collected: list[tuple[Packet, tuple[str, int]]] = []
 
@@ -54,14 +54,6 @@ class DiscoveryService:
 
         try:
             broadcaster.subscribe(handle_packet)
-            current_device = self.device_service.get_current_device()
-            query_packet = Packet(
-                type=PacketType.DISCOVER,
-                version=str(RLP.VERSION),
-                device_id=current_device.id,
-                payload=current_device,
-            )
-            broadcaster.broadcast(query_packet)
             time.sleep(timeout)
         finally:
             broadcaster.unsubscribe(handle_packet)

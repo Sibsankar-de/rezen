@@ -25,13 +25,11 @@ class PacketSerializer:
         ).encode("utf-8")
 
     @staticmethod
-    def loads(data: bytes | str) -> Packet[Any]:
+    def loads(data: bytes) -> Packet[Any]:
         """
-        Convert network bytes or string back into a Packet.
+        Convert network bytes back into a Packet.
         """
-        if isinstance(data, bytes):
-            data = data.decode("utf-8")
-        raw = json.loads(data)
+        raw = json.loads(data.decode("utf-8"))
 
         PacketSerializer._validate(raw)
 

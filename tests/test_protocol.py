@@ -13,7 +13,7 @@ from protocol.packet import Packet, PacketType
 from protocol.serializer import PacketSerializer
 
 
-def test_packet_serializer_roundtrip_bytes_and_str():
+def test_packet_serializer_roundtrip_bytes():
     pkt = Packet(
         type=PacketType.DISCOVER,
         version="1",
@@ -28,12 +28,6 @@ def test_packet_serializer_roundtrip_bytes_and_str():
     assert loaded_from_bytes.type == PacketType.DISCOVER
     assert loaded_from_bytes.device_id == "dev123"
     assert loaded_from_bytes.payload == {"key": "value"}
-
-    # Loads from str
-    loaded_from_str = PacketSerializer.loads(raw_bytes.decode("utf-8"))
-    assert loaded_from_str.type == PacketType.DISCOVER
-    assert loaded_from_str.device_id == "dev123"
-    assert loaded_from_str.payload == {"key": "value"}
 
 
 def test_broadcaster_deserialize_does_not_raise():
