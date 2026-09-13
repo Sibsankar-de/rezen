@@ -2,7 +2,7 @@ import json
 from dataclasses import asdict
 from typing import Any
 
-from protocol.packet import Packet
+from protocol.packet import Packet, PacketType
 
 
 class PacketSerializer:
@@ -25,16 +25,24 @@ class PacketSerializer:
         ).encode("utf-8")
 
     @staticmethod
-    def loads(data: bytes) -> Packet[Any]:
+    def loads(data: bytes | str) -> Packet[Any]:
         """
-        Convert network bytes back into a Packet.
+        Convert network bytes or string back into a Packet.
         """
-        raw = json.loads(data.decode("utf-8"))
+        if isinstance(data, bytes):
+            data = data.decode("utf-8")
+        raw = json.loads(data)
 
         PacketSerializer._validate(raw)
 
+        pkt_type = raw["type"]
+        try:
+            pkt_type = PacketType(pkt_type)
+        except ValueError:
+            pass
+
         return Packet(
-            type=raw["type"],
+            type=pkt_type,
             version=raw["version"],
             device_id=raw["device_id"],
             payload=raw["payload"],

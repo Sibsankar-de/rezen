@@ -9,6 +9,9 @@ import psutil
 from protocol.packet import Packet
 from protocol.protocol import RLP
 from protocol.serializer import PacketSerializer
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 PacketHandler = Callable[[Packet, tuple[str, int]], None]
 
@@ -43,6 +46,11 @@ class Broadcaster:
         )
 
         self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if hasattr(socket, "SO_REUSEPORT"):
+            try:
+                self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            except OSError:
+                pass
         self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
         self._socket.bind(("", port))
@@ -90,7 +98,8 @@ class Broadcaster:
         for ip in broadcast_ips:
             try:
                 self._send(packet, (ip, self._port))
-            except Exception:
+            except Exception as err:
+                logger.debug(f"Failed to send broadcast to {ip}:{self._port}: {err}")
                 continue
 
     def send(
@@ -110,11 +119,7 @@ class Broadcaster:
         address: tuple[str, int],
     ) -> None:
 
-        data = json.dumps(
-            asdict(packet),
-            separators=(",", ":"),
-        ).encode()
-
+        data = PacketSerializer.dumps(packet)
         self._socket.sendto(data, address)
 
     # Receiving
@@ -131,30 +136,46 @@ class Broadcaster:
             try:
                 packet = self._deserialize(data)
 
-            except Exception:
+            except Exception as err:
+                logger.debug(f"Failed to deserialize packet from {address}: {err}")
                 continue
 
             for handler in tuple(self._handlers):
-                handler(packet, address)
+                try:
+                    handler(packet, address)
+                except Exception as err:
+                    logger.error(f"Error in packet handler: {err}")
 
     # Serialization
     @staticmethod
     def _deserialize(data: bytes) -> Packet:
 
-        raw = PacketSerializer.loads(data.decode())
+        raw = PacketSerializer.loads(data)
         return raw
 
     @staticmethod
     def get_broadcast_addresses() -> list[str]:
         """
         Return a list of all active IPv4 broadcast addresses across available network interfaces,
-        including 255.255.255.255 as a global fallback.
+        prioritizing physical LAN interfaces, followed by 255.255.255.255, followed by virtual adapters.
         """
-        addresses_to_broadcast = {"255.255.255.255", RLP.BROADCAST_IP}
+        primary_addrs: list[str] = []
+        virtual_addrs: list[str] = []
+
         try:
             interfaces = psutil.net_if_addrs()
+            stats = psutil.net_if_stats()
 
             for interface_name, addresses in interfaces.items():
+                stat = stats.get(interface_name)
+                if stat and not stat.isup:
+                    continue
+
+                is_virtual = any(
+                    v in interface_name.lower()
+                    for v in ("docker", "br-", "veth", "virbr", "vmnet")
+                )
+
                 for address in addresses:
                     if address.family == socket.AF_INET:
                         ip = address.address
@@ -166,7 +187,8 @@ class Broadcaster:
 
                         # If broadcast is explicitly reported by OS
                         if getattr(address, "broadcast", None):
-                            addresses_to_broadcast.add(address.broadcast)
+                            target_list = virtual_addrs if is_virtual else primary_addrs
+                            target_list.append(address.broadcast)
 
                         if netmask:
                             try:
@@ -174,13 +196,24 @@ class Broadcaster:
                                     f"{ip}/{netmask}",
                                     strict=False,
                                 )
-                                addresses_to_broadcast.add(str(network.broadcast_address))
+                                target_list = virtual_addrs if is_virtual else primary_addrs
+                                target_list.append(str(network.broadcast_address))
                             except Exception:
                                 pass
         except Exception:
             pass
 
-        return list(addresses_to_broadcast)
+        primary_addrs.append(RLP.BROADCAST_IP)
+        primary_addrs.append("255.255.255.255")
+
+        seen = set()
+        result: list[str] = []
+        for addr in primary_addrs + virtual_addrs:
+            if addr and addr not in seen:
+                seen.add(addr)
+                result.append(addr)
+
+        return result
 
     @staticmethod
     def get_broadcast_address() -> str:
