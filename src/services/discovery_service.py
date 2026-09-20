@@ -1,4 +1,4 @@
-import time
+import asyncio
 from typing import Optional
 
 from models.device import Device
@@ -30,45 +30,36 @@ class DiscoveryService:
     def port(self) -> int:
         return self.device_service.get_current_device().port
 
-    def collect_packets(
+    async def collect_packets(
         self, timeout: float = 1.0
     ) -> list[tuple[Packet, tuple[str, int]]]:
-        """
-        Listen on the network for `timeout` seconds to collect incoming presence/broadcast packets.
-        """
+        """Listen on the network for `timeout` seconds and return collected packets from other devices."""
         collected: list[tuple[Packet, tuple[str, int]]] = []
 
         def handle_packet(packet: Packet, address: tuple[str, int]) -> None:
             if packet.device_id != self.device_id:
                 collected.append((packet, address))
 
-        own_broadcaster = False
-        broadcaster = self.broadcaster
-
-        if broadcaster is None:
-            own_broadcaster = True
-            broadcaster = Broadcaster(port=self.port)
-            broadcaster.start()
-        else:
-            broadcaster.start()
+        own_broadcaster = self.broadcaster is None
+        broadcaster = self.broadcaster or Broadcaster(port=self.port)
+        await broadcaster.start()
 
         try:
             broadcaster.subscribe(handle_packet)
-            time.sleep(timeout)
+            await asyncio.sleep(timeout)
         finally:
             broadcaster.unsubscribe(handle_packet)
             if own_broadcaster:
-                broadcaster.stop()
+                await broadcaster.stop()
 
         logger.info(f"Collected {len(collected)} packet(s) from network.")
         return collected
 
-    def discover_devices(self, timeout: float = 1.0) -> list[Device]:
+    async def discover_devices(self, timeout: float = 1.0) -> list[Device]:
         """Actively scan network packets and return a list of discovered devices."""
         discovered: dict[str, Device] = {}
-        collected_packets = self.collect_packets(timeout=timeout)
 
-        for packet, address in collected_packets:
+        for packet, address in await self.collect_packets(timeout=timeout):
             if packet.type in (PacketType.DISCOVER_RESPONSE, PacketType.DISCOVER):
                 try:
                     device = Device.from_payload(packet.payload, fallback_address=address)

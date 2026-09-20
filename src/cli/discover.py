@@ -1,6 +1,6 @@
+import asyncio
 import signal
-import sys
-import time
+from typing import Optional
 
 from rich.console import Console
 from rich.table import Table
@@ -13,7 +13,11 @@ logger = get_logger(__name__)
 console = Console()
 
 
-def run_cli_discover(timeout: float = 2.0, interval: float = 3.0) -> None:
+async def run_cli_discover(
+    timeout: float = 2.0,
+    interval: float = 3.0,
+    stop_event: Optional[asyncio.Event] = None,
+) -> None:
     """Run LAN discovery in headless CLI mode. Continuously and periodically scans until stopped."""
     discovery_service = DiscoveryService()
     current_device = DeviceService().get_current_device()
@@ -22,9 +26,9 @@ def run_cli_discover(timeout: float = 2.0, interval: float = 3.0) -> None:
         f"Initiating network discovery from {current_device.name} ({current_device.ip}:{current_device.port})..."
     )
 
-    def perform_scan():
+    async def perform_scan() -> None:
         logger.info(f"Scanning local network (timeout={timeout}s)...")
-        devices = discovery_service.discover_devices(timeout=timeout)
+        devices = await discovery_service.discover_devices(timeout=timeout)
 
         if not devices:
             logger.info("No active Rezen devices discovered on the network.")
@@ -50,18 +54,39 @@ def run_cli_discover(timeout: float = 2.0, interval: float = 3.0) -> None:
         f"Continuous discovery active (rescan every {interval}s). Press Ctrl+C to stop."
     )
 
-    def handle_sigint(signum, frame):
-        logger.info("Received interrupt signal. Discovery scan stopped cleanly.")
-        sys.exit(0)
+    if stop_event is None:
+        stop_event = asyncio.Event()
 
-    signal.signal(signal.SIGINT, handle_sigint)
-    signal.signal(signal.SIGTERM, handle_sigint)
+    loop = asyncio.get_running_loop()
+
+    def handle_signal():
+        logger.info("Received interrupt signal. Discovery scan stopped cleanly.")
+        stop_event.set()
 
     try:
-        while True:
-            perform_scan()
-            time.sleep(interval)
-    except KeyboardInterrupt:
-        logger.info("Discovery scan stopped cleanly.")
+        loop.add_signal_handler(signal.SIGINT, handle_signal)
+        loop.add_signal_handler(signal.SIGTERM, handle_signal)
+    except (NotImplementedError, RuntimeError):
+        pass
 
+    async def scan_loop() -> None:
+        while not stop_event.is_set():
+            await perform_scan()
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=interval)
+            except asyncio.TimeoutError:
+                pass
 
+    scan_task = asyncio.create_task(scan_loop())
+    try:
+        await stop_event.wait()
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        pass
+    finally:
+        scan_task.cancel()
+        try:
+            await scan_task
+        except asyncio.CancelledError:
+            pass
+
+    logger.info("Discovery scan stopped cleanly.")

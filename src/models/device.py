@@ -12,10 +12,16 @@ class Device:
     os: str
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any], fallback_address: tuple[str, int] | None = None) -> "Device":
+    def from_dict(
+        cls, data: dict[str, Any], fallback_address: tuple[str, int] | None = None
+    ) -> "Device":
         """Construct a Device instance from a dictionary representation."""
         ip = data.get("ip")
-        if not ip or ip == "0.0.0.0" or (str(ip).startswith("127.") and fallback_address):
+        if (
+            not ip
+            or ip == "0.0.0.0"
+            or (str(ip).startswith("127.") and fallback_address)
+        ):
             ip = fallback_address[0] if fallback_address else "127.0.0.1"
 
         port = data.get("port")
@@ -32,10 +38,16 @@ class Device:
         )
 
     @classmethod
-    def from_payload(cls, payload: Any, fallback_address: tuple[str, int] | None = None) -> "Device":
+    def from_payload(
+        cls, payload: Any, fallback_address: tuple[str, int] | None = None
+    ) -> "Device":
         """Convert a packet payload (Device instance or dict) into a Device object."""
         if isinstance(payload, cls):
-            if (not payload.ip or payload.ip == "0.0.0.0" or (payload.ip.startswith("127.") and fallback_address)) and fallback_address:
+            if (
+                not payload.ip
+                or payload.ip == "0.0.0.0"
+                or (payload.ip.startswith("127.") and fallback_address)
+            ) and fallback_address:
                 return cls(
                     id=payload.id,
                     name=payload.name,

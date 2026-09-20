@@ -1,6 +1,6 @@
+import asyncio
 import signal
-import sys
-import time
+from typing import Optional
 
 from rich.console import Console
 from rich.panel import Panel
@@ -14,7 +14,10 @@ logger = get_logger(__name__)
 console = Console()
 
 
-def run_cli_broadcast(interval: float = 2.0) -> None:
+async def run_cli_broadcast(
+    interval: float = 2.0,
+    stop_event: Optional[asyncio.Event] = None,
+) -> None:
     """Run LAN presence broadcaster continuously in headless CLI mode with logging."""
     device_service = DeviceService()
     device = device_service.get_current_device()
@@ -42,26 +45,32 @@ def run_cli_broadcast(interval: float = 2.0) -> None:
     )
 
     broadcast_service = BroadcastService(interval=interval)
-    broadcast_service.start_private_broadcast()
-    broadcast_service.broadcast()
+    await broadcast_service.start_private_broadcast()
+    await broadcast_service.broadcast()
 
     logger.info(
         "Presence broadcast is active. Listening for discover requests. Press Ctrl+C to stop."
     )
 
-    def handle_sigint(signum, frame):
-        logger.info("Received interrupt signal. Stopping broadcast service...")
-        broadcast_service.stop_private_broadcast()
-        logger.info("Broadcaster stopped cleanly.")
-        sys.exit(0)
+    if stop_event is None:
+        stop_event = asyncio.Event()
 
-    signal.signal(signal.SIGINT, handle_sigint)
-    signal.signal(signal.SIGTERM, handle_sigint)
+    loop = asyncio.get_running_loop()
+
+    def handle_signal():
+        logger.info("Received interrupt signal. Stopping broadcast service...")
+        stop_event.set()
 
     try:
-        while True:
-            time.sleep(1.0)
-    except KeyboardInterrupt:
-        logger.info("Keyboard interrupt received. Stopping broadcast service...")
-        broadcast_service.stop_private_broadcast()
+        loop.add_signal_handler(signal.SIGINT, handle_signal)
+        loop.add_signal_handler(signal.SIGTERM, handle_signal)
+    except (NotImplementedError, RuntimeError):
+        pass
+
+    try:
+        await stop_event.wait()
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        pass
+    finally:
+        await broadcast_service.stop_private_broadcast()
         logger.info("Broadcaster stopped cleanly.")

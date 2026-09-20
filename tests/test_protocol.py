@@ -1,5 +1,5 @@
 import sys
-import time
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -23,7 +23,6 @@ def test_packet_serializer_roundtrip_bytes():
     raw_bytes = PacketSerializer.dumps(pkt)
     assert isinstance(raw_bytes, bytes)
 
-    # Loads from bytes
     loaded_from_bytes = PacketSerializer.loads(raw_bytes)
     assert loaded_from_bytes.type == PacketType.DISCOVER
     assert loaded_from_bytes.device_id == "dev123"
@@ -43,7 +42,8 @@ def test_broadcaster_deserialize_does_not_raise():
     assert result.type == PacketType.DISCOVER
 
 
-def test_broadcaster_real_udp_send_and_receive():
+@pytest.mark.asyncio
+async def test_broadcaster_real_udp_send_and_receive():
     received = []
 
     def handler(packet, address):
@@ -51,7 +51,7 @@ def test_broadcaster_real_udp_send_and_receive():
 
     broadcaster = Broadcaster()
     broadcaster.subscribe(handler)
-    broadcaster.start()
+    await broadcaster.start()
 
     try:
         pkt = Packet(
@@ -61,10 +61,10 @@ def test_broadcaster_real_udp_send_and_receive():
             payload={},
         )
         broadcaster.send(pkt, ("127.0.0.1", broadcaster._port))
-        time.sleep(0.3)
+        await asyncio.sleep(0.3)
 
         assert len(received) >= 1
         assert received[0][0].device_id == "ping_device"
         assert received[0][0].type == PacketType.PING
     finally:
-        broadcaster.stop()
+        await broadcaster.stop()

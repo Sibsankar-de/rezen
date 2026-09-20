@@ -1,9 +1,8 @@
-import json
-import socket
-import threading
-from dataclasses import asdict
-from typing import Callable
+import asyncio
 import ipaddress
+import socket
+from typing import Callable
+
 import psutil
 
 from protocol.packet import Packet
@@ -14,6 +13,36 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 PacketHandler = Callable[[Packet, tuple[str, int]], None]
+
+
+class _UDPProtocol(asyncio.DatagramProtocol):
+    """asyncio DatagramProtocol that dispatches received datagrams to registered handlers."""
+
+    def __init__(self, handlers: list[PacketHandler]) -> None:
+        self._handlers = handlers
+        self.transport: asyncio.DatagramTransport | None = None
+
+    def connection_made(self, transport: asyncio.DatagramTransport) -> None:
+        self.transport = transport
+
+    def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
+        try:
+            packet = PacketSerializer.loads(data)
+        except Exception as err:
+            logger.debug(f"Failed to deserialize packet from {addr}: {err}")
+            return
+
+        for handler in tuple(self._handlers):
+            try:
+                handler(packet, addr)
+            except Exception as err:
+                logger.error(f"Error in packet handler: {err}")
+
+    def error_received(self, exc: Exception) -> None:
+        logger.debug(f"UDP error received: {exc}")
+
+    def connection_lost(self, exc: Exception | None) -> None:
+        pass
 
 
 class Broadcaster:
@@ -34,54 +63,39 @@ class Broadcaster:
 
     def __init__(self, port: int = RLP.DEFAULT_PORT):
         self._port = port
-
         self._handlers: list[PacketHandler] = []
+        self._transport: asyncio.DatagramTransport | None = None
+        self._protocol: _UDPProtocol | None = None
 
-        self._running = False
-        self._thread: threading.Thread | None = None
-
-        self._socket = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_DGRAM,
-        )
-
-        self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if hasattr(socket, "SO_REUSEPORT"):
-            try:
-                self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            except OSError:
-                pass
-        self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-
-        self._socket.bind(("", port))
-
-    # Lifecycle
-    def start(self) -> None:
-        if self._running:
+    async def start(self) -> None:
+        """Bind the UDP socket and register with the running event loop."""
+        if self._transport is not None:
             return
 
-        self._running = True
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if hasattr(socket, "SO_REUSEPORT"):
+            try:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            except OSError:
+                pass
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.bind(("", self._port))
 
-        self._thread = threading.Thread(
-            target=self._listen_loop,
-            daemon=True,
-            name="Broadcaster",
+        self._protocol = _UDPProtocol(self._handlers)
+        transport, _ = await asyncio.get_running_loop().create_datagram_endpoint(
+            lambda: self._protocol,
+            sock=sock,
         )
+        self._transport = transport
 
-        self._thread.start()
+    async def stop(self) -> None:
+        """Close the UDP socket."""
+        if self._transport is not None:
+            self._transport.close()
+            self._transport = None
+            self._protocol = None
 
-    def stop(self) -> None:
-        self._running = False
-
-        try:
-            self._socket.close()
-        except OSError:
-            pass
-
-        if self._thread is not None:
-            self._thread.join(timeout=1)
-
-    # Subscription
     def subscribe(self, handler: PacketHandler) -> None:
         self._handlers.append(handler)
 
@@ -89,69 +103,28 @@ class Broadcaster:
         if handler in self._handlers:
             self._handlers.remove(handler)
 
-    # Sending
     def broadcast(self, packet: Packet) -> None:
-        """
-        Broadcast a packet to all devices on the LAN across all active network interfaces.
-        """
-        broadcast_ips = self.get_broadcast_addresses()
-        for ip in broadcast_ips:
+        """Broadcast a packet to all devices on the LAN across all active network interfaces."""
+        for ip in self.get_broadcast_addresses():
             try:
                 self._send(packet, (ip, self._port))
             except Exception as err:
                 logger.debug(f"Failed to send broadcast to {ip}:{self._port}: {err}")
-                continue
 
-    def send(
-        self,
-        packet: Packet,
-        address: tuple[str, int],
-    ) -> None:
-        """
-        Send a packet to a specific device.
-        """
-
+    def send(self, packet: Packet, address: tuple[str, int]) -> None:
+        """Send a packet to a specific device."""
         self._send(packet, address)
 
-    def _send(
-        self,
-        packet: Packet,
-        address: tuple[str, int],
-    ) -> None:
-
+    def _send(self, packet: Packet, address: tuple[str, int]) -> None:
         data = PacketSerializer.dumps(packet)
-        self._socket.sendto(data, address)
+        if self._transport is not None and not self._transport.is_closing():
+            self._transport.sendto(data, address)
+        else:
+            logger.warning(f"Broadcaster not started, dropping packet to {address}")
 
-    # Receiving
-    def _listen_loop(self) -> None:
-
-        while self._running:
-
-            try:
-                data, address = self._socket.recvfrom(RLP.MAX_PACKET_SIZE)
-
-            except OSError:
-                break
-
-            try:
-                packet = self._deserialize(data)
-
-            except Exception as err:
-                logger.debug(f"Failed to deserialize packet from {address}: {err}")
-                continue
-
-            for handler in tuple(self._handlers):
-                try:
-                    handler(packet, address)
-                except Exception as err:
-                    logger.error(f"Error in packet handler: {err}")
-
-    # Serialization
     @staticmethod
     def _deserialize(data: bytes) -> Packet:
-
-        raw = PacketSerializer.loads(data)
-        return raw
+        return PacketSerializer.loads(data)
 
     @staticmethod
     def get_broadcast_addresses() -> list[str]:
@@ -181,11 +154,9 @@ class Broadcaster:
                         ip = address.address
                         netmask = address.netmask
 
-                        # Ignore loopback
                         if ip.startswith("127."):
                             continue
 
-                        # If broadcast is explicitly reported by OS
                         if getattr(address, "broadcast", None):
                             target_list = virtual_addrs if is_virtual else primary_addrs
                             target_list.append(address.broadcast)
@@ -196,7 +167,9 @@ class Broadcaster:
                                     f"{ip}/{netmask}",
                                     strict=False,
                                 )
-                                target_list = virtual_addrs if is_virtual else primary_addrs
+                                target_list = (
+                                    virtual_addrs if is_virtual else primary_addrs
+                                )
                                 target_list.append(str(network.broadcast_address))
                             except Exception:
                                 pass
@@ -220,4 +193,3 @@ class Broadcaster:
         """Return the primary broadcast address or global fallback."""
         addresses = Broadcaster.get_broadcast_addresses()
         return addresses[0] if addresses else "255.255.255.255"
-

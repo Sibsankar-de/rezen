@@ -1,4 +1,3 @@
-import asyncio
 from textual import work
 from textual.app import ComposeResult
 from textual.containers import Center, Horizontal, Middle, Vertical, VerticalScroll
@@ -69,16 +68,16 @@ class DiscoverScreen(Screen):
             self._scan_timer.stop()
             self._scan_timer = None
 
-    @work(exclusive=True, thread=True)
-    def run_scan(self) -> None:
-        """Perform network device discovery in a background worker thread."""
-        self.app.call_from_thread(self._set_status, "Scanning network for devices...")
+    @work(exclusive=True)
+    async def run_scan(self) -> None:
+        """Perform network device discovery as an async worker."""
+        self._set_status("Scanning network for devices...")
         try:
-            devices = self.discovery_service.discover_devices(timeout=1.0)
+            devices = await self.discovery_service.discover_devices(timeout=1.0)
             self._discovered_devices = devices
-            self.app.call_from_thread(self._update_device_list, devices)
+            self._update_device_list(devices)
         except Exception as err:
-            self.app.call_from_thread(self._set_status, f"Error scanning: {err}")
+            self._set_status(f"Error scanning: {err}")
 
     def _set_status(self, status_text: str) -> None:
         status_label = self.query_one("#scan-status", Label)

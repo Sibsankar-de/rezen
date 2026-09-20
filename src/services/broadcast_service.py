@@ -1,5 +1,4 @@
-import threading
-import time
+import asyncio
 from typing import Optional
 
 from models.device import Device
@@ -24,8 +23,7 @@ class BroadcastService:
         self.device_service = device_service or DeviceService()
         self._broadcaster = broadcaster
         self.interval = interval
-        self._stop_event = threading.Event()
-        self._loop_thread: Optional[threading.Thread] = None
+        self._broadcast_task: asyncio.Task | None = None
 
     @property
     def device(self) -> Device:
@@ -35,47 +33,45 @@ class BroadcastService:
     def port(self) -> int:
         return self.device.port
 
-    def start_private_broadcast(self) -> None:
+    async def start_private_broadcast(self) -> None:
         """Start transport broadcaster, listen for DISCOVER requests, and continuously send presence broadcasts every `self.interval` seconds."""
         if self._broadcaster is None:
             self._broadcaster = Broadcaster(port=self.port)
         self._broadcaster.subscribe(self._on_packet_received)
-        self._broadcaster.start()
-
-        self._stop_event.clear()
-        if self._loop_thread is None or not self._loop_thread.is_alive():
-            self._loop_thread = threading.Thread(
-                target=self._periodic_broadcast_loop,
-                daemon=True,
-            )
-            self._loop_thread.start()
-
+        await self._broadcaster.start()
+        self._broadcast_task = asyncio.create_task(self._periodic_broadcast_loop())
         logger.info(f"BroadcastService started on port {self.port} with {self.interval}s interval.")
 
-    def stop_private_broadcast(self) -> None:
+    async def stop_private_broadcast(self) -> None:
         """Stop continuous broadcasting loop and transport broadcaster."""
-        self._stop_event.set()
-        if self._loop_thread and self._loop_thread.is_alive():
-            self._loop_thread.join(timeout=1.0)
-            self._loop_thread = None
+        if self._broadcast_task is not None:
+            self._broadcast_task.cancel()
+            try:
+                await self._broadcast_task
+            except asyncio.CancelledError:
+                pass
+            self._broadcast_task = None
 
         if self._broadcaster is not None:
             self._broadcaster.unsubscribe(self._on_packet_received)
-            self._broadcaster.stop()
+            await self._broadcaster.stop()
             self._broadcaster = None
             logger.info("BroadcastService stopped")
 
-    def _periodic_broadcast_loop(self) -> None:
-        """Background thread loop broadcasting presence DISCOVER packets every `self.interval` seconds."""
-        while not self._stop_event.is_set():
+    async def _periodic_broadcast_loop(self) -> None:
+        """Broadcast presence DISCOVER packets every `self.interval` seconds."""
+        while True:
             try:
-                self.broadcast()
+                await self.broadcast()
             except Exception as err:
                 logger.error(f"Error in periodic broadcast loop: {err}")
-            self._stop_event.wait(self.interval)
+            try:
+                await asyncio.sleep(self.interval)
+            except asyncio.CancelledError:
+                break
 
     def _on_packet_received(self, packet: Packet, address: tuple[str, int]) -> None:
-        """Handle incoming network packets. Responds to DISCOVER packets with DISCOVER_RESPONSE."""
+        """Respond to DISCOVER packets with DISCOVER_RESPONSE."""
         current_device = self.device
         if packet.device_id == current_device.id:
             return
@@ -91,14 +87,14 @@ class BroadcastService:
             if self._broadcaster:
                 self._broadcaster.send(response_packet, address)
 
-    def broadcast(self, packet: Optional[Packet] = None) -> None:
+    async def broadcast(self, packet: Optional[Packet] = None) -> None:
         """
         Broadcast a packet over the network.
         If no packet is provided, constructs a default DISCOVER presence packet with Device payload.
         """
         if self._broadcaster is None:
             self._broadcaster = Broadcaster(port=self.port)
-            self._broadcaster.start()
+            await self._broadcaster.start()
 
         current_device = self.device
         if packet is None:
