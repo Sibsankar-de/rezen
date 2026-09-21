@@ -63,14 +63,15 @@ async def test_run_cli_discover_continuous_interrupt():
         stop_event = asyncio.Event()
 
         mock_disc_service = MagicMock()
-        async def mock_discover(timeout=1.0):
+        async def mock_start(callback):
             stop_event.set()
-            return []
-        mock_disc_service.discover_devices = AsyncMock(side_effect=mock_discover)
+        mock_disc_service.start_discovery = AsyncMock(side_effect=mock_start)
+        mock_disc_service.stop_discovery = AsyncMock()
         MockDiscoveryService.return_value = mock_disc_service
 
         await run_cli_discover(timeout=1.0, interval=2.0, stop_event=stop_event)
-        mock_disc_service.discover_devices.assert_called_once_with(timeout=1.0)
+        mock_disc_service.start_discovery.assert_awaited_once()
+        mock_disc_service.stop_discovery.assert_awaited_once()
 
 
 @pytest.mark.asyncio

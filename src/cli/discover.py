@@ -1,10 +1,13 @@
 import asyncio
 import signal
+import time
 from typing import Optional
 
 from rich.console import Console
 from rich.table import Table
 
+from models.device import Device
+from protocol.protocol import RLP
 from services.device_service import DeviceService
 from services.discovery_service import DiscoveryService
 from utils.logger import get_logger
@@ -18,24 +21,22 @@ async def run_cli_discover(
     interval: float = 3.0,
     stop_event: Optional[asyncio.Event] = None,
 ) -> None:
-    """Run LAN discovery in headless CLI mode. Continuously and periodically scans until stopped."""
+    """Run LAN discovery in headless CLI mode continuously until stopped."""
     discovery_service = DiscoveryService()
     current_device = DeviceService().get_current_device()
+    devices_cache: dict[str, tuple[Device, float]] = {}
 
     logger.info(
         f"Initiating network discovery from {current_device.name} ({current_device.ip}:{current_device.port})..."
     )
 
-    async def perform_scan() -> None:
-        logger.info(f"Scanning local network (timeout={timeout}s)...")
-        devices = await discovery_service.discover_devices(timeout=timeout)
-
-        if not devices:
-            logger.info("No active Rezen devices discovered on the network.")
+    def print_devices() -> None:
+        active_devices = [dev for dev, _ in devices_cache.values()]
+        if not active_devices:
             return
 
         table = Table(
-            title=f"🔍 Discovered Rezen Devices ({len(devices)} found)",
+            title=f"🔍 Discovered Rezen Devices ({len(active_devices)} found)",
             border_style="green",
         )
         table.add_column("Device ID", style="bold cyan")
@@ -45,14 +46,17 @@ async def run_cli_discover(
         table.add_column("Port", style="magenta")
         table.add_column("OS", style="blue")
 
-        for dev in devices:
+        for dev in active_devices:
             table.add_row(dev.id, dev.name, dev.hostname, dev.ip, str(dev.port), dev.os)
 
         console.print(table)
 
-    logger.info(
-        f"Continuous discovery active (rescan every {interval}s). Press Ctrl+C to stop."
-    )
+    def on_device_discovered(device: Device) -> None:
+        is_new = device.id not in devices_cache
+        devices_cache[device.id] = (device, time.time())
+        if is_new:
+            logger.info(f"Discovered device: {device.name} ({device.ip})")
+            print_devices()
 
     if stop_event is None:
         stop_event = asyncio.Event()
@@ -69,24 +73,36 @@ async def run_cli_discover(
     except (NotImplementedError, RuntimeError):
         pass
 
-    async def scan_loop() -> None:
+    await discovery_service.start_discovery(on_device_discovered)
+    logger.info("Continuous discovery active. Press Ctrl+C to stop.")
+
+    async def prune_loop() -> None:
         while not stop_event.is_set():
-            await perform_scan()
+            now = time.time()
+            cutoff = now - RLP.DEVICE_TIMEOUT
+            removed = False
+            for dev_id in list(devices_cache.keys()):
+                if devices_cache[dev_id][1] < cutoff:
+                    del devices_cache[dev_id]
+                    removed = True
+            if removed:
+                print_devices()
             try:
-                await asyncio.wait_for(stop_event.wait(), timeout=interval)
+                await asyncio.wait_for(stop_event.wait(), timeout=1.0)
             except asyncio.TimeoutError:
                 pass
 
-    scan_task = asyncio.create_task(scan_loop())
+    prune_task = asyncio.create_task(prune_loop())
     try:
         await stop_event.wait()
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass
     finally:
-        scan_task.cancel()
+        prune_task.cancel()
         try:
-            await scan_task
+            await prune_task
         except asyncio.CancelledError:
             pass
+        await discovery_service.stop_discovery()
 
     logger.info("Discovery scan stopped cleanly.")
