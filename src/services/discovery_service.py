@@ -46,6 +46,16 @@ class DiscoveryService:
 
         try:
             broadcaster.subscribe(handle_packet)
+
+            current_device = self.device_service.get_current_device()
+            query_packet = Packet(
+                type=PacketType.DISCOVER,
+                version=str(RLP.VERSION),
+                device_id=current_device.id,
+                payload=current_device,
+            )
+            broadcaster.broadcast(query_packet)
+
             await asyncio.sleep(timeout)
         finally:
             broadcaster.unsubscribe(handle_packet)

@@ -32,41 +32,6 @@ async def test_broadcast_service_start_stop():
 
 
 @pytest.mark.asyncio
-async def test_broadcast_service_responds_to_discover():
-    mock_dev_service = MagicMock()
-    device = Device(id="local_dev", name="Local Device", hostname="host", ip="127.0.0.1", port=45871, os="Linux")
-    mock_dev_service.get_current_device.return_value = device
-
-    service = BroadcastService(device_service=mock_dev_service)
-    await service.start_private_broadcast()
-
-    try:
-        discover_packet = Packet(
-            type=PacketType.DISCOVER,
-            version="1",
-            device_id="remote_dev",
-            payload={"name": "Remote", "port": 45871},
-        )
-
-        sent_packets = []
-
-        def capture_send(packet, address):
-            sent_packets.append((packet, address))
-
-        service._broadcaster.send = capture_send
-        service._on_packet_received(discover_packet, ("192.168.1.50", 45871))
-
-        assert len(sent_packets) == 1
-        sent_packet, target_addr = sent_packets[0]
-        assert sent_packet.type == PacketType.DISCOVER_RESPONSE
-        assert sent_packet.device_id == "local_dev"
-        assert sent_packet.payload == device
-        assert target_addr == ("192.168.1.50", 45871)
-    finally:
-        await service.stop_private_broadcast()
-
-
-@pytest.mark.asyncio
 async def test_broadcast_service_broadcast_custom_packet():
     mock_broadcaster = MagicMock()
     mock_dev_service = MagicMock()

@@ -12,7 +12,7 @@ logger = get_logger(__name__)
 
 
 class BroadcastService:
-    """Service responsible for broadcasting presence and custom packets across the LAN network."""
+    """Service responsible for broadcasting presence packets across the LAN network."""
 
     def __init__(
         self,
@@ -34,16 +34,15 @@ class BroadcastService:
         return self.device.port
 
     async def start_private_broadcast(self) -> None:
-        """Start transport broadcaster, listen for DISCOVER requests, and continuously send presence broadcasts every `self.interval` seconds."""
+        """Start the UDP broadcaster and continuously send presence packets every `self.interval` seconds."""
         if self._broadcaster is None:
             self._broadcaster = Broadcaster(port=self.port)
-        self._broadcaster.subscribe(self._on_packet_received)
         await self._broadcaster.start()
         self._broadcast_task = asyncio.create_task(self._periodic_broadcast_loop())
         logger.info(f"BroadcastService started on port {self.port} with {self.interval}s interval.")
 
     async def stop_private_broadcast(self) -> None:
-        """Stop continuous broadcasting loop and transport broadcaster."""
+        """Stop continuous broadcasting loop and close the UDP broadcaster."""
         if self._broadcast_task is not None:
             self._broadcast_task.cancel()
             try:
@@ -53,7 +52,6 @@ class BroadcastService:
             self._broadcast_task = None
 
         if self._broadcaster is not None:
-            self._broadcaster.unsubscribe(self._on_packet_received)
             await self._broadcaster.stop()
             self._broadcaster = None
             logger.info("BroadcastService stopped")
@@ -69,23 +67,6 @@ class BroadcastService:
                 await asyncio.sleep(self.interval)
             except asyncio.CancelledError:
                 break
-
-    def _on_packet_received(self, packet: Packet, address: tuple[str, int]) -> None:
-        """Respond to DISCOVER packets with DISCOVER_RESPONSE."""
-        current_device = self.device
-        if packet.device_id == current_device.id:
-            return
-
-        if packet.type == PacketType.DISCOVER:
-            logger.debug(f"Received DISCOVER from {packet.device_id} at {address}. Replying with DISCOVER_RESPONSE.")
-            response_packet = Packet(
-                type=PacketType.DISCOVER_RESPONSE,
-                version=str(RLP.VERSION),
-                device_id=current_device.id,
-                payload=current_device,
-            )
-            if self._broadcaster:
-                self._broadcaster.send(response_packet, address)
 
     async def broadcast(self, packet: Optional[Packet] = None) -> None:
         """
