@@ -32,16 +32,16 @@ class BroadcastScreen(Screen):
                         )
                         yield Button("Back to Home", id="btn-back", variant="primary")
 
-    def on_mount(self) -> None:
+    async def on_mount(self) -> None:
         """Start local network broadcast upon entering the screen."""
         self.broadcast_service = BroadcastService()
-        self.broadcast_service.start_private_broadcast()
-        self.broadcast_service.broadcast()
+        await self.broadcast_service.start_private_broadcast()
+        await self.broadcast_service.broadcast()
 
-    def on_unmount(self) -> None:
+    async def on_unmount(self) -> None:
         """Stop local network broadcast upon leaving the screen."""
         if self.broadcast_service:
-            self.broadcast_service.stop_private_broadcast()
+            await self.broadcast_service.stop_private_broadcast()
             self.broadcast_service = None
 
     def on_button_pressed(self, event: Button.Pressed) -> None:

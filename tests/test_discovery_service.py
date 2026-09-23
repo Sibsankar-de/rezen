@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -13,8 +13,11 @@ from protocol.packet import Packet, PacketType
 from services.discovery_service import DiscoveryService
 
 
-def test_discover_devices_with_device_payload():
+@pytest.mark.asyncio
+async def test_discover_devices_with_device_payload():
     mock_broadcaster = MagicMock()
+    mock_broadcaster.start = AsyncMock()
+    mock_broadcaster.stop = AsyncMock()
     mock_dev_service = MagicMock()
     local_device = Device(id="local_id", name="Local", hostname="localhost", ip="127.0.0.1", port=45871, os="Linux")
     mock_dev_service.get_current_device.return_value = local_device
@@ -41,7 +44,7 @@ def test_discover_devices_with_device_payload():
 
     mock_broadcaster.subscribe.side_effect = capture_subscribe
 
-    devices = service.discover_devices(timeout=0.01)
+    devices = await service.discover_devices(timeout=0.01)
 
     assert len(devices) == 1
     assert isinstance(devices[0], Device)
@@ -56,8 +59,11 @@ def test_discover_devices_with_device_payload():
     mock_broadcaster.unsubscribe.assert_called_once()
 
 
-def test_discover_devices_ignores_self():
+@pytest.mark.asyncio
+async def test_discover_devices_ignores_self():
     mock_broadcaster = MagicMock()
+    mock_broadcaster.start = AsyncMock()
+    mock_broadcaster.stop = AsyncMock()
     mock_dev_service = MagicMock()
     local_device = Device(id="local_id", name="Local Host", hostname="localhost", ip="127.0.0.1", port=45871, os="Linux")
     mock_dev_service.get_current_device.return_value = local_device
@@ -75,8 +81,45 @@ def test_discover_devices_ignores_self():
 
     mock_broadcaster.subscribe.side_effect = capture_subscribe
 
-    devices = service.discover_devices(timeout=0.01)
+    devices = await service.discover_devices(timeout=0.01)
     assert len(devices) == 0
+
+
+@pytest.mark.asyncio
+async def test_start_and_stop_discovery_lifecycle():
+    mock_broadcaster = MagicMock()
+    mock_broadcaster.start = AsyncMock()
+    mock_broadcaster.stop = AsyncMock()
+    mock_dev_service = MagicMock()
+    mock_dev_service.get_current_device.return_value = Device(
+        id="me", name="Me", hostname="host", ip="127.0.0.1", port=45871, os="Linux"
+    )
+
+    service = DiscoveryService(broadcaster=mock_broadcaster, device_service=mock_dev_service)
+
+    discovered = []
+    await service.start_discovery(lambda dev: discovered.append(dev))
+
+    mock_broadcaster.subscribe.assert_called_once()
+    mock_broadcaster.start.assert_awaited_once()
+
+    handler = mock_broadcaster.subscribe.call_args[0][0]
+    remote_device = Device(
+        id="peer", name="Peer", hostname="peer-host", ip="192.168.1.5", port=45871, os="Linux"
+    )
+    packet = Packet(
+        type=PacketType.DISCOVER,
+        version="1",
+        device_id="peer",
+        payload=remote_device,
+    )
+    handler(packet, ("192.168.1.5", 45871))
+
+    assert len(discovered) == 1
+    assert discovered[0].id == "peer"
+
+    await service.stop_discovery()
+    mock_broadcaster.unsubscribe.assert_called_once()
 
 
 def test_device_converters():

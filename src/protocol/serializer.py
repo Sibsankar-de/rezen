@@ -2,7 +2,7 @@ import json
 from dataclasses import asdict
 from typing import Any
 
-from protocol.packet import Packet
+from protocol.packet import Packet, PacketType
 
 
 class PacketSerializer:
@@ -33,8 +33,14 @@ class PacketSerializer:
 
         PacketSerializer._validate(raw)
 
+        pkt_type = raw["type"]
+        try:
+            pkt_type = PacketType(pkt_type)
+        except ValueError:
+            pass
+
         return Packet(
-            type=raw["type"],
+            type=pkt_type,
             version=raw["version"],
             device_id=raw["device_id"],
             payload=raw["payload"],

@@ -8,8 +8,8 @@ T = TypeVar("T")
 class PacketType(StrEnum):
     DISCOVER = "discover"
     DISCOVER_RESPONSE = "discover_response"
-    FILE_REQUEST = "file_request"
-    FILE_CHUNK = "file_chunk"
+    CONNECTION_REQUEST = "connection_request"
+    CONNECTION_ACCEPTED = "CONNECTION_ACCEPTED"
     CLIPBOARD = "clipboard"
     PING = "ping"
 
