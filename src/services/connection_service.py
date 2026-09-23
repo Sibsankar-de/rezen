@@ -4,6 +4,7 @@ from models.device import Device
 from models.connection import Connection
 
 from protocol.broadcaster import Broadcaster
+from protocol.connection_manager import ConnectionManager
 from protocol.packet import Packet, PacketType
 
 from services.device_service import DeviceService
@@ -14,13 +15,13 @@ class ConnectionService:
 
     def __init__(
         self,
+        connection_manager: Optional[ConnectionManager] = None,
         broadcaster: Optional[Broadcaster] = None,
         device_service: Optional[DeviceService] = None,
     ):
+        self.connection_manager = connection_manager
         self.device_service = device_service or DeviceService()
         self.broadcaster = broadcaster
-
-        self.active_connection: Connection | None = None
 
     @property
     def device(self) -> Device:
@@ -31,6 +32,14 @@ class ConnectionService:
         if self.broadcaster is None:
             self.broadcaster = Broadcaster(port=self.device.port)
             await self.broadcaster.start()
+
+    async def _start_connection_manager(self) -> None:
+        """Start the connection manager if it is not already running."""
+        if self.connection_manager is None:
+            self.connection_manager = ConnectionManager(
+                current_device=self.device, port=self.device.port
+            )
+            await self.connection_manager.start()
 
     async def request_connection(self, to_device: Device) -> None:
         """Send a connection request to the specified device."""
@@ -43,7 +52,7 @@ class ConnectionService:
             payload=self.device,
         )
 
-        self.broadcaster.send(request_packet, (to_device.ip, to_device.port))
+        await self.broadcaster.send(request_packet, (to_device.ip, to_device.port))
 
     async def accept_connection(self, from_device: Device) -> None:
         """Accept a connection request from the specified device."""
@@ -56,7 +65,12 @@ class ConnectionService:
             payload=self.device,
         )
 
-        self.broadcaster.send(accept_packet, (from_device.ip, from_device.port))
+        await self.broadcaster.send(accept_packet, (from_device.ip, from_device.port))
 
-    def _start_connection(self):
+        connection = await self._establish_connection(from_device)
+
+    async def _establish_connection(self, remote_device: Device) -> Connection:
         """Creates a new long lived connection"""
+        await self._start_connection_manager()
+
+        return await self.connection_manager.connect(remote_device)
