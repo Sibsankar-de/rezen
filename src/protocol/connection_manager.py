@@ -7,6 +7,9 @@ from protocol.packet import Packet, PacketType
 from protocol.serializer import TCPSerializer
 from models.connection import Connection, ConnectionState
 from models.device import Device
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 PacketHandler = Callable[
     [Connection, Packet],
@@ -70,6 +73,9 @@ class ConnectionManager:
     async def connect(self, remote_device: Device) -> Connection:
         """Creates a new connection with a remote device"""
         remote_ip, remote_port = remote_device.ip, remote_device.port
+        logger.info(
+            f"Opening TCP connection to {remote_device.name} at {remote_ip}:{remote_port}"
+        )
         reader, writer = await asyncio.open_connection(remote_ip, remote_port)
 
         connection = await self._create_register_connection(
@@ -78,12 +84,36 @@ class ConnectionManager:
             remote_port=remote_port,
             reader=reader,
             writer=writer,
+            start_listener=False,
         )
 
-        # send hello packet
-        await self._send_hello_packet(connection)
+        try:
+            # send hello packet
+            logger.info(
+                f"Sending HELLO packet to {remote_device.name} ({connection.id})"
+            )
+            await self._send_hello_packet(connection)
 
-        return connection
+            # wait for hello ack packet
+            logger.info(
+                f"Waiting for HELLO_ACK packet from {remote_device.name} ({connection.id})"
+            )
+            await self._receive_hello_ack_packet(connection.reader)
+            logger.info(
+                f"Received HELLO_ACK from {remote_device.name} ({connection.id})"
+            )
+
+            # start listener now that handshake is complete
+            if self._running:
+                await self._start_listener(connection)
+
+            return connection
+        except Exception as exc:
+            logger.error(
+                f"Handshake failed with {remote_device.name} ({connection.id}): {exc}"
+            )
+            await self._cleanup_connection(connection)
+            raise
 
     async def disconnect(self, connection_id: str) -> None:
         """Disconnect a connection"""
@@ -132,10 +162,14 @@ class ConnectionManager:
 
         remote_ip = remote_address[0]
         remote_port = remote_address[1]
+        logger.info(f"Accepted incoming TCP socket from {remote_ip}:{remote_port}")
 
         try:
             # Receive remote device id from hello packet
             hello_packet = await self._receive_hello_packet(reader)
+            logger.info(
+                f"Received HELLO from {hello_packet.device_id} ({remote_ip}:{remote_port})"
+            )
 
             connection = await self._create_register_connection(
                 device_id=hello_packet.device_id,
@@ -143,24 +177,41 @@ class ConnectionManager:
                 remote_port=remote_port,
                 reader=reader,
                 writer=writer,
+                start_listener=False,
             )
 
             # send ack packet
+            logger.info(
+                f"Sending HELLO_ACK to {hello_packet.device_id} ({connection.id})"
+            )
             await self._ack_hello_packet(connection)
+
+            if self._running:
+                await self._start_listener(connection)
 
             await self._handle_packet(connection, hello_packet)
 
         except asyncio.TimeoutError:
+            logger.warning(
+                f"Handshake timed out for incoming connection from {remote_ip}:{remote_port}"
+            )
             await self._close_writer(writer)
 
         except (
             asyncio.IncompleteReadError,
             ConnectionError,
             ValueError,
-        ):
+        ) as err:
+            logger.warning(
+                f"Handshake failed for incoming connection from {remote_ip}:{remote_port}: {err}"
+            )
             await self._close_writer(writer)
 
         except Exception:
+            logger.error(
+                f"Unexpected error accepting connection from {remote_ip}:{remote_port}",
+                exc_info=True,
+            )
             await self._close_writer(writer)
 
     async def _send_hello_packet(self, connection: Connection) -> None:
@@ -185,6 +236,17 @@ class ConnectionManager:
 
         return hello_packet
 
+    async def _receive_hello_ack_packet(self, reader: asyncio.StreamReader) -> Packet:
+        """Receive hello ack packet and deserialize it"""
+        ack_packet = await asyncio.wait_for(
+            TCPSerializer.deserialize(reader), timeout=10
+        )
+
+        if ack_packet.type != PacketType.HELLO_ACK:
+            raise ConnectionError(f"Invalid hello ack packet type: {ack_packet.type}")
+
+        return ack_packet
+
     async def _ack_hello_packet(self, connection: Connection) -> None:
         """Send hello packet Acknowledgement to the remote device"""
         hello_ack = Packet(
@@ -203,6 +265,7 @@ class ConnectionManager:
         remote_port: str | int,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
+        start_listener: bool = True,
     ) -> Connection:
         """Creates a new connection object and registers it."""
         now = datetime.now()
@@ -210,7 +273,7 @@ class ConnectionManager:
         new_connection = Connection(
             id=f"{device_id}:{remote_ip}:{remote_port}",
             device_id=device_id,
-            remote_port=remote_port,
+            remote_port=int(remote_port),
             remote_ip=remote_ip,
             reader=reader,
             writer=writer,
@@ -222,7 +285,7 @@ class ConnectionManager:
         self._connections[new_connection.id] = new_connection
 
         # start listener for the connection
-        if self._running:
+        if start_listener and self._running:
             await self._start_listener(new_connection)
 
         return new_connection
@@ -250,14 +313,16 @@ class ConnectionManager:
 
         except asyncio.IncompleteReadError:
             # Remote side closed the connection.
-            pass
+            logger.info(f"Connection closed by remote peer: {connection.id}")
 
-        except ConnectionError:
-            pass
+        except ConnectionError as err:
+            logger.warning(f"Connection error on {connection.id}: {err}")
 
         except Exception:
-            # unexpected connection errors.
-            pass
+            logger.error(
+                f"Unexpected error in connection listener {connection.id}",
+                exc_info=True,
+            )
 
         finally:
             await self._cleanup_connection(connection)
@@ -297,7 +362,7 @@ class ConnectionManager:
     async def _send(self, connection: Connection, packet: Packet) -> None:
         """Send a packet in a connection"""
         if connection.state != ConnectionState.CONNECTED:
-            raise ConnectionError(f"Connection is connected: {connection.id}")
+            raise ConnectionError(f"Connection is not connected: {connection.id}")
 
         data = TCPSerializer.serialize(packet)
 

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import struct
 from dataclasses import asdict
@@ -77,28 +78,37 @@ class TCPSerializer:
     MAX_PACKET_SIZE = 64 * 1024
 
     @classmethod
-    async def serialize(cls, packet: Packet[Any]) -> bytes:
+    def serialize(cls, packet: Packet[Any]) -> bytes:
         """
         Convert a Packet into a length-prefixed byte frame.
         """
-
         payload = PacketSerializer.dumps(packet)
-
         size = len(payload)
 
         if size > cls.MAX_PACKET_SIZE:
             raise ValueError(f"Packet too large: {size} bytes")
 
         header = struct.pack("!I", size)
-
         return header + payload
 
     @classmethod
-    async def deserialize(cls, data: bytes) -> Packet[Any]:
+    async def deserialize(
+        cls, stream_or_data: asyncio.StreamReader | bytes
+    ) -> Packet[Any]:
         """
-        Deserialize one complete TCP frame.
+        Deserialize one complete TCP frame from an asyncio.StreamReader or bytes.
         """
+        if isinstance(stream_or_data, asyncio.StreamReader):
+            header = await stream_or_data.readexactly(cls.HEADER_SIZE)
+            (size,) = struct.unpack("!I", header)
 
+            if size > cls.MAX_PACKET_SIZE:
+                raise ValueError(f"Packet too large: {size} bytes")
+
+            payload = await stream_or_data.readexactly(size)
+            return PacketSerializer.loads(payload)
+
+        data = stream_or_data
         if len(data) < cls.HEADER_SIZE:
             raise ValueError("Incomplete TCP frame")
 
@@ -114,7 +124,7 @@ class TCPSerializer:
 
         if len(payload) != size:
             raise ValueError(
-                f"Incomplete TCP frame: " f"expected {size}, got {len(payload)}"
+                f"Incomplete TCP frame: expected {size}, got {len(payload)}"
             )
 
         return PacketSerializer.loads(payload)

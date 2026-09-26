@@ -34,9 +34,11 @@ class Container:
         logger.info("Stopping shared network services...")
         if self._connection_manager is not None:
             await self._connection_manager.stop()
+            self._connection_manager = None
         if self._broadcaster is not None:
             await self._broadcaster.stop()
             self._broadcaster = None
+        self._connection_service = None
         logger.info("Shared network services stopped.")
 
     @property
