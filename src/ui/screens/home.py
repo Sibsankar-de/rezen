@@ -4,9 +4,12 @@ from textual.screen import Screen
 from textual.widgets import Button, Label
 
 from container import container
+from utils.logger import get_logger
 from .broadcast import BroadcastScreen
 from .discover import DiscoverScreen
 from ..layout import BaseLayout
+
+logger = get_logger(__name__)
 
 
 class HomeScreen(Screen):
@@ -36,6 +39,7 @@ class HomeScreen(Screen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-broadcast":
+            logger.info("User navigating to BroadcastScreen.")
             self.app.push_screen(
                 BroadcastScreen(
                     broadcast_service=container.broadcast_service(),
@@ -43,6 +47,7 @@ class HomeScreen(Screen):
                 )
             )
         elif event.button.id == "btn-discover":
+            logger.info("User navigating to DiscoverScreen.")
             self.app.push_screen(
                 DiscoverScreen(discovery_service=container.discovery_service())
             )

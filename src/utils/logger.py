@@ -1,5 +1,6 @@
 import logging
 import os
+import uuid
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -10,12 +11,23 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 LOG_FILE = LOG_DIR / "rezen.log"
 
-LOG_FORMAT = "%(asctime)s | %(name)s | %(funcName)s:%(lineno)d - %(message)s"
+LOG_FORMAT = "%(asctime)s | RUN=%(run_id)s | %(name)s | %(funcName)s:%(lineno)d - %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 DEBUG_ENABLED = os.getenv("APP_DEBUG", "false").lower() == "true"
 
 LOG_LEVEL = logging.DEBUG if DEBUG_ENABLED else logging.INFO
+
+# Unique ID for this application run
+RUN_ID = uuid.uuid4().hex[:8]
+
+
+class RunIdFilter(logging.Filter):
+    """Add the current application run ID to every log record."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.run_id = RUN_ID
+        return True
 
 
 def setup_logging() -> None:
@@ -42,6 +54,7 @@ def setup_logging() -> None:
 
     console_handler.setLevel(LOG_LEVEL)
     console_handler.setFormatter(formatter)
+    console_handler.addFilter(RunIdFilter())
 
     file_handler = RotatingFileHandler(
         LOG_FILE,
@@ -52,6 +65,7 @@ def setup_logging() -> None:
 
     file_handler.setLevel(LOG_LEVEL)
     file_handler.setFormatter(formatter)
+    file_handler.addFilter(RunIdFilter())
 
     root_logger.addHandler(console_handler)
     root_logger.addHandler(file_handler)

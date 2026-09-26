@@ -7,7 +7,10 @@ from textual.widgets import Button, Label, ListItem, ListView
 from models.device import Device
 from services.broadcast_service import BroadcastService
 from services.connection_service import ConnectionService
+from utils.logger import get_logger
 from ..layout import BaseLayout
+
+logger = get_logger(__name__)
 
 
 class RequestListItem(ListItem):
@@ -67,18 +70,24 @@ class BroadcastScreen(Screen):
 
     async def on_mount(self) -> None:
         """Start local network broadcast upon entering the screen."""
-        await self._broadcast_service.start_private_broadcast(
-            on_connection_request=self._on_connection_request
-        )
-        await self._broadcast_service.broadcast()
+        logger.info("BroadcastScreen mounted, starting presence broadcast.")
+        try:
+            await self._broadcast_service.start_private_broadcast(
+                on_connection_request=self._on_connection_request
+            )
+            await self._broadcast_service.broadcast()
+        except Exception:
+            logger.error("Failed to start broadcast service.", exc_info=True)
 
     async def on_unmount(self) -> None:
         """Stop local network broadcast upon leaving the screen."""
+        logger.info("BroadcastScreen unmounting, stopping presence broadcast.")
         await self._broadcast_service.stop_private_broadcast()
 
     def _on_connection_request(self, device: Device) -> None:
         """Called by BroadcastService when a CONNECTION_REQUEST packet arrives."""
         if device.id not in self._pending_requests:
+            logger.info(f"Incoming connection request from {device.name} ({device.ip}:{device.port})")
             self._pending_requests[device.id] = device
             # Schedule the UI refresh on Textual's event loop — the UDP datagram
             # callback runs synchronously inside asyncio but outside Textual's
@@ -116,13 +125,16 @@ class BroadcastScreen(Screen):
     @work(exclusive=False, thread=False)
     async def _accept_connection(self, device: Device) -> None:
         """Accept the incoming connection request asynchronously."""
+        logger.info(f"User accepted connection request from {device.name} ({device.ip})")
         self._set_status(f"🔗 Accepting connection from {device.name}…")
         try:
             connection = await self._connection_service.accept_connection(device)
+            logger.info(f"Connection accepted successfully: id={connection.id} with {device.name}")
             self._set_status(
                 f"✅ Connected to {device.name} (connection id: {connection.id})"
             )
         except Exception as exc:
+            logger.error(f"Failed to accept connection from {device.name}: {exc}", exc_info=True)
             self._set_status(f"❌ Failed to accept connection from {device.name}: {exc}")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:

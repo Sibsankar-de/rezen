@@ -6,6 +6,9 @@ from services.broadcast_service import BroadcastService
 from services.connection_service import ConnectionService
 from services.device_service import DeviceService
 from services.discovery_service import DiscoveryService
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class Container:
@@ -21,16 +24,20 @@ class Container:
 
     async def start(self) -> None:
         """Start all network-level singletons. Call once at app startup."""
+        logger.info("Starting shared network services...")
         await self.broadcaster.start()
         await self.connection_manager.start()
+        logger.info("Shared network services started.")
 
     async def stop(self) -> None:
         """Shut down all network-level singletons. Call once at app teardown."""
+        logger.info("Stopping shared network services...")
         if self._connection_manager is not None:
             await self._connection_manager.stop()
         if self._broadcaster is not None:
             await self._broadcaster.stop()
             self._broadcaster = None
+        logger.info("Shared network services stopped.")
 
     @property
     def device_service(self) -> DeviceService:

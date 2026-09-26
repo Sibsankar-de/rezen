@@ -7,7 +7,10 @@ from textual.widgets import Button, Label, LoadingIndicator
 from container import container
 from models.device import Device
 from models.connection import Connection
+from utils.logger import get_logger
 from ..layout import BaseLayout
+
+logger = get_logger(__name__)
 
 
 class ConnectingScreen(Screen):
@@ -38,6 +41,7 @@ class ConnectingScreen(Screen):
 
     async def on_mount(self) -> None:
         """Initiate the connection request once the screen is mounted."""
+        logger.info(f"ConnectingScreen mounted for device {self._device.name} ({self._device.ip})")
         self._connect()
 
     @work(exclusive=True, thread=False)
@@ -46,10 +50,12 @@ class ConnectingScreen(Screen):
         self._set_status("Sending connection request…")
         try:
             await container.connection_service.request_connection(self._device)
+            logger.info(f"Connection request sent to {self._device.name}; awaiting acceptance.")
             self._set_status(
                 f"✅ Request sent. Waiting for {self._device.name} to accept…"
             )
         except Exception as exc:
+            logger.error(f"Failed to connect to {self._device.name}: {exc}", exc_info=True)
             self._set_status(f"❌ Failed to connect: {exc}")
             self._show_cancel_only()
 

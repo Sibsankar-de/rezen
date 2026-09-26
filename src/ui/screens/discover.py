@@ -8,8 +8,11 @@ from textual.widgets import Button, Label, ListItem, ListView
 from models.device import Device
 from protocol.protocol import RLP
 from services.discovery_service import DiscoveryService
+from utils.logger import get_logger
 from .connecting import ConnectingScreen
 from ..layout import BaseLayout
+
+logger = get_logger(__name__)
 
 
 class DeviceListItem(ListItem):
@@ -66,12 +69,17 @@ class DiscoverScreen(Screen):
 
     async def on_mount(self) -> None:
         """Start continuous discovery and periodic pruning of expired devices."""
-        await self._discovery_service.start_discovery(self._on_device_discovered)
+        logger.info("DiscoverScreen mounted, starting continuous discovery.")
+        try:
+            await self._discovery_service.start_discovery(self._on_device_discovered)
+        except Exception:
+            logger.error("Failed to start discovery service.", exc_info=True)
         self._set_status("Listening for devices on network...")
         self._scan_timer = self.set_interval(1.0, self._prune_expired_devices)
 
     async def on_unmount(self) -> None:
         """Stop continuous discovery and pruning timer upon leaving the screen."""
+        logger.info("DiscoverScreen unmounting, stopping discovery.")
         if self._scan_timer:
             self._scan_timer.stop()
             self._scan_timer = None
@@ -79,7 +87,10 @@ class DiscoverScreen(Screen):
 
     def _on_device_discovered(self, device: Device) -> None:
         """Handle newly discovered or refreshed device packet in real time."""
+        is_new = device.id not in self._devices_cache
         self._devices_cache[device.id] = (device, time.time())
+        if is_new:
+            logger.info(f"New device discovered: {device.name} ({device.ip}:{device.port})")
         self._refresh_device_list()
 
     def _prune_expired_devices(self) -> None:
@@ -93,6 +104,7 @@ class DiscoverScreen(Screen):
         if expired:
             for dev_id in expired:
                 del self._devices_cache[dev_id]
+            logger.info(f"Pruned {len(expired)} expired device(s) from cache.")
             self._refresh_device_list()
 
     def _refresh_device_list(self) -> None:

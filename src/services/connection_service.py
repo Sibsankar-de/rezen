@@ -8,6 +8,9 @@ from protocol.connection_manager import ConnectionManager
 from protocol.packet import Packet, PacketType
 
 from services.device_service import DeviceService
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ConnectionService:
@@ -43,6 +46,7 @@ class ConnectionService:
 
     async def request_connection(self, to_device: Device) -> None:
         """Send a connection request to the specified device."""
+        logger.info(f"Sending connection request to {to_device.name} ({to_device.ip}:{to_device.port})")
         await self._ensure_broadcaster()
 
         request_packet = Packet(
@@ -59,6 +63,7 @@ class ConnectionService:
 
     async def accept_connection(self, from_device: Device) -> Connection:
         """Accept a connection request from the specified device."""
+        logger.info(f"Accepting connection from {from_device.name} ({from_device.ip}:{from_device.port})")
         await self._ensure_broadcaster()
 
         accept_packet = Packet(
@@ -74,11 +79,19 @@ class ConnectionService:
 
     async def _establish_connection(self, remote_device: Device) -> Connection:
         """Creates a new long lived connection"""
+        logger.info(f"Establishing TCP connection with {remote_device.name} ({remote_device.ip})")
         await self._ensure_connection_manager()
 
-        return await self._connection_manager.connect(remote_device)
+        try:
+            connection = await self._connection_manager.connect(remote_device)
+            logger.info(f"Connection established: id={connection.id} with {remote_device.name}")
+            return connection
+        except Exception:
+            logger.error(f"Failed to establish connection with {remote_device.name}", exc_info=True)
+            raise
 
     async def disconnect_connection(self, connection_id: str) -> None:
         """Disconnect a connection"""
+        logger.info(f"Disconnecting connection id={connection_id}")
         await self._ensure_connection_manager()
         await self._connection_manager.disconnect(connection_id)
