@@ -100,7 +100,7 @@ class BroadcastService:
         logger.info(f"Broadcasting packet type='{packet.type}' over the network")
         self._broadcaster.broadcast(packet)
 
-    async def _handle_request_packets(
+    def _handle_request_packets(
         self, packet: Packet, address: tuple[str, int]
     ) -> None:
         """Handles incoming connection request packet from a device."""

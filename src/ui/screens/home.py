@@ -3,6 +3,8 @@ from textual.containers import Center, Middle, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, Label
 
+from .broadcast import BroadcastScreen
+from .discover import DiscoverScreen
 from ..layout import BaseLayout
 
 
@@ -32,7 +34,8 @@ class HomeScreen(Screen):
                             )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        connection_service = self.app.connection_service
         if event.button.id == "btn-broadcast":
-            self.app.push_screen("broadcast")
+            self.app.push_screen(BroadcastScreen(connection_service=connection_service))
         elif event.button.id == "btn-discover":
-            self.app.push_screen("discover")
+            self.app.push_screen(DiscoverScreen(connection_service=connection_service))

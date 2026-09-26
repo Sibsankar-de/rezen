@@ -1,4 +1,3 @@
-import asyncio
 from textual import work
 from textual.app import ComposeResult
 from textual.containers import Center, Middle, Vertical
@@ -14,10 +13,10 @@ from ..layout import BaseLayout
 class ConnectingScreen(Screen):
     """Screen displayed while initiating a connection to a discovered device."""
 
-    def __init__(self, device: Device, **kwargs):
+    def __init__(self, device: Device, connection_service: ConnectionService, **kwargs):
         super().__init__(**kwargs)
         self._device = device
-        self._connection_service = ConnectionService()
+        self._connection_service = connection_service
         self._connection: Connection | None = None
 
     def compose(self) -> ComposeResult:

@@ -41,7 +41,7 @@ class ConnectionManager:
 
         # start listeners for all connections
         for connection in self._connections.values():
-            self._start_listener(connection)
+            await self._start_listener(connection)
 
     async def stop(self) -> None:
         """Stop the connection manager."""
@@ -181,7 +181,7 @@ class ConnectionManager:
         )
 
         if hello_packet.type != PacketType.HELLO:
-            ConnectionError("Invalid hello packet.")
+            raise ConnectionError("Invalid hello packet.")
 
         return hello_packet
 
@@ -223,7 +223,7 @@ class ConnectionManager:
 
         # start listener for the connection
         if self._running:
-            self._start_listener(new_connection)
+            await self._start_listener(new_connection)
 
         return new_connection
 

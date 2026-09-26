@@ -7,6 +7,7 @@ from textual.widgets import Button, Label, ListItem, ListView
 
 from models.device import Device
 from protocol.protocol import RLP
+from services.connection_service import ConnectionService
 from services.discovery_service import DiscoveryService
 from .connecting import ConnectingScreen
 from ..layout import BaseLayout
@@ -32,8 +33,9 @@ class DeviceListItem(ListItem):
 class DiscoverScreen(Screen):
     """Screen for scanning and displaying discovered Rezen devices on the LAN."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, connection_service: ConnectionService, **kwargs):
         super().__init__(**kwargs)
+        self._connection_service = connection_service
         self.discovery_service = DiscoveryService()
         self._devices_cache: dict[str, tuple[Device, float]] = {}
         self._scan_timer = None
@@ -115,7 +117,12 @@ class DiscoverScreen(Screen):
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         """Open ConnectingScreen when the user clicks a discovered device."""
         if isinstance(event.item, DeviceListItem):
-            self.app.push_screen(ConnectingScreen(event.item.device))
+            self.app.push_screen(
+                ConnectingScreen(
+                    device=event.item.device,
+                    connection_service=self._connection_service,
+                )
+            )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-scan":

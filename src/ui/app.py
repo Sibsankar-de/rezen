@@ -2,6 +2,7 @@ from pathlib import Path
 from textual.app import App
 from textual.binding import Binding
 
+from services.connection_service import ConnectionService
 from .screens import BroadcastScreen, DiscoverScreen, HomeScreen
 
 STYLES_DIR = Path(__file__).parent / "styles"
@@ -22,14 +23,16 @@ class RezenApp(App):
         Binding("q", "quit", "Quit", show=True),
     ]
 
+    # HomeScreen has no constructor args so it can stay in SCREENS.
+    # BroadcastScreen and DiscoverScreen need a shared ConnectionService,
+    # so they are pushed imperatively (see on_button_pressed in HomeScreen).
     SCREENS = {
         "home": HomeScreen,
-        "broadcast": BroadcastScreen,
-        "discover": DiscoverScreen,
     }
 
     def on_mount(self) -> None:
-        """Initial routing to the home screen."""
+        """Create the shared connection service and route to the home screen."""
+        self.connection_service = ConnectionService()
         self.push_screen("home")
 
 

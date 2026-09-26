@@ -52,7 +52,7 @@ class ConnectionService:
             payload=self.device,
         )
 
-        await self._broadcaster.send(request_packet, (to_device.ip, to_device.port))
+        self._broadcaster.send(request_packet, (to_device.ip, to_device.port))
 
         # start the connection manager
         await self._ensure_connection_manager()
@@ -68,7 +68,7 @@ class ConnectionService:
             payload=self.device,
         )
 
-        await self._broadcaster.send(accept_packet, (from_device.ip, from_device.port))
+        self._broadcaster.send(accept_packet, (from_device.ip, from_device.port))
 
         return await self._establish_connection(from_device)
 
@@ -80,5 +80,5 @@ class ConnectionService:
 
     async def disconnect_connection(self, connection_id: str) -> None:
         """Disconnect a connection"""
-        self._ensure_connection_manager()
-        self._connection_manager.disconnect(connection_id)
+        await self._ensure_connection_manager()
+        await self._connection_manager.disconnect(connection_id)

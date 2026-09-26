@@ -31,10 +31,10 @@ class RequestListItem(ListItem):
 class BroadcastScreen(Screen):
     """Screen displayed while broadcasting device presence across the LAN."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, connection_service: ConnectionService, **kwargs):
         super().__init__(**kwargs)
         self.broadcast_service: BroadcastService | None = None
-        self._connection_service = ConnectionService()
+        self._connection_service = connection_service
         self._pending_requests: dict[str, Device] = {}
 
     def compose(self) -> ComposeResult:
@@ -79,7 +79,10 @@ class BroadcastScreen(Screen):
         """Called by BroadcastService when a CONNECTION_REQUEST packet arrives."""
         if device.id not in self._pending_requests:
             self._pending_requests[device.id] = device
-            self._refresh_request_list()
+            # Schedule the UI refresh on Textual's event loop — the UDP datagram
+            # callback runs synchronously inside asyncio but outside Textual's
+            # message pump, so direct widget mutation must be deferred.
+            self.call_later(self._refresh_request_list)
 
     def _refresh_request_list(self) -> None:
         """Refresh the incoming request ListView."""
