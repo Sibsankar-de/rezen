@@ -15,3 +15,6 @@ wheels/
 
 # db
 rezen.db
+
+# logs
+logs/

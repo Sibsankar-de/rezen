@@ -1,6 +1,7 @@
 import asyncio
 import sys
 from pathlib import Path
+from utils.logger import setup_logging
 
 src_dir = Path(__file__).resolve().parent
 if str(src_dir) not in sys.path:
@@ -11,6 +12,8 @@ from cli.main import cli
 
 def main() -> None:
     """Primary application entry point which starts src/cli/main.py."""
+    setup_logging()
+
     asyncio.run(cli())
 
 

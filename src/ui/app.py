@@ -2,8 +2,8 @@ from pathlib import Path
 from textual.app import App
 from textual.binding import Binding
 
-from services.connection_service import ConnectionService
-from .screens import BroadcastScreen, DiscoverScreen, HomeScreen
+from container import container
+from .screens import HomeScreen
 
 STYLES_DIR = Path(__file__).parent / "styles"
 
@@ -23,17 +23,18 @@ class RezenApp(App):
         Binding("q", "quit", "Quit", show=True),
     ]
 
-    # HomeScreen has no constructor args so it can stay in SCREENS.
-    # BroadcastScreen and DiscoverScreen need a shared ConnectionService,
-    # so they are pushed imperatively (see on_button_pressed in HomeScreen).
     SCREENS = {
         "home": HomeScreen,
     }
 
-    def on_mount(self) -> None:
-        """Create the shared connection service and route to the home screen."""
-        self.connection_service = ConnectionService()
+    async def on_mount(self) -> None:
+        """Start shared network services and route to the home screen."""
+        await container.start()
         self.push_screen("home")
+
+    async def on_unmount(self) -> None:
+        """Tear down shared network services on app exit."""
+        await container.stop()
 
 
 if __name__ == "__main__":

@@ -4,19 +4,18 @@ from textual.containers import Center, Middle, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, Label, LoadingIndicator
 
+from container import container
 from models.device import Device
 from models.connection import Connection
-from services.connection_service import ConnectionService
 from ..layout import BaseLayout
 
 
 class ConnectingScreen(Screen):
     """Screen displayed while initiating a connection to a discovered device."""
 
-    def __init__(self, device: Device, connection_service: ConnectionService, **kwargs):
+    def __init__(self, device: Device, **kwargs):
         super().__init__(**kwargs)
         self._device = device
-        self._connection_service = connection_service
         self._connection: Connection | None = None
 
     def compose(self) -> ComposeResult:
@@ -46,7 +45,7 @@ class ConnectingScreen(Screen):
         """Send connection request and await acceptance."""
         self._set_status("Sending connection request…")
         try:
-            await self._connection_service.request_connection(self._device)
+            await container.connection_service.request_connection(self._device)
             self._set_status(
                 f"✅ Request sent. Waiting for {self._device.name} to accept…"
             )

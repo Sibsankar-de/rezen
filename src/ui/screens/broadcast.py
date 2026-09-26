@@ -7,7 +7,6 @@ from textual.widgets import Button, Label, ListItem, ListView
 from models.device import Device
 from services.broadcast_service import BroadcastService
 from services.connection_service import ConnectionService
-from services.device_service import DeviceService
 from ..layout import BaseLayout
 
 
@@ -31,14 +30,19 @@ class RequestListItem(ListItem):
 class BroadcastScreen(Screen):
     """Screen displayed while broadcasting device presence across the LAN."""
 
-    def __init__(self, connection_service: ConnectionService, **kwargs):
+    def __init__(
+        self,
+        broadcast_service: BroadcastService,
+        connection_service: ConnectionService,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
-        self.broadcast_service: BroadcastService | None = None
+        self._broadcast_service = broadcast_service
         self._connection_service = connection_service
         self._pending_requests: dict[str, Device] = {}
 
     def compose(self) -> ComposeResult:
-        device = DeviceService().get_current_device()
+        device = self._connection_service.device
         with BaseLayout():
             with Center():
                 with Middle():
@@ -63,17 +67,14 @@ class BroadcastScreen(Screen):
 
     async def on_mount(self) -> None:
         """Start local network broadcast upon entering the screen."""
-        self.broadcast_service = BroadcastService()
-        await self.broadcast_service.start_private_broadcast(
+        await self._broadcast_service.start_private_broadcast(
             on_connection_request=self._on_connection_request
         )
-        await self.broadcast_service.broadcast()
+        await self._broadcast_service.broadcast()
 
     async def on_unmount(self) -> None:
         """Stop local network broadcast upon leaving the screen."""
-        if self.broadcast_service:
-            await self.broadcast_service.stop_private_broadcast()
-            self.broadcast_service = None
+        await self._broadcast_service.stop_private_broadcast()
 
     def _on_connection_request(self, device: Device) -> None:
         """Called by BroadcastService when a CONNECTION_REQUEST packet arrives."""
@@ -127,4 +128,3 @@ class BroadcastScreen(Screen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-back":
             self.app.pop_screen()
-
