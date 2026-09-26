@@ -1,12 +1,12 @@
-/* Screen Styles - HomeScreen, BroadcastScreen, DiscoverScreen */
+/* Screen Styles - HomeScreen, BroadcastScreen, DiscoverScreen, ConnectingScreen */
 
-HomeScreen, BroadcastScreen, DiscoverScreen {
+HomeScreen, BroadcastScreen, DiscoverScreen, ConnectingScreen {
     align: center middle;
     height: 100%;
     width: 100%;
 }
 
-#welcome-card, #broadcast-card, #discover-card {
+#welcome-card, #broadcast-card, #discover-card, #connecting-card {
     width: 70;
     height: auto;
     border: heavy $accent;
@@ -15,14 +15,14 @@ HomeScreen, BroadcastScreen, DiscoverScreen {
     align: center middle;
 }
 
-#welcome-title, #broadcast-title, #discover-title {
+#welcome-title, #broadcast-title, #discover-title, #connecting-title {
     text-style: bold;
     color: $accent;
     content-align: center middle;
     margin-bottom: 1;
 }
 
-#welcome-subtitle, #broadcast-subtitle, #discover-subtitle {
+#welcome-subtitle, #broadcast-subtitle, #discover-subtitle, #connecting-subtitle {
     color: $text-muted;
     content-align: center middle;
     margin-bottom: 1;
@@ -88,4 +88,68 @@ DeviceListItem {
 
 #discover-actions Button {
     margin: 0 1;
+}
+
+/* ── ConnectingScreen ─────────────────────────────────────── */
+
+#connecting-info {
+    color: $text;
+    content-align: center middle;
+    margin: 1 0;
+    padding: 1;
+    border: dashed $accent;
+}
+
+#connecting-spinner {
+    margin: 1 0;
+    height: 1;
+}
+
+#connecting-status {
+    color: $text-muted;
+    content-align: center middle;
+    margin-bottom: 1;
+    text-wrap: wrap;
+}
+
+/* ── BroadcastScreen – Incoming request list ──────────────── */
+
+#broadcast-requests-label {
+    color: $text-muted;
+    content-align: left middle;
+    margin-top: 1;
+}
+
+#request-list-container {
+    height: 5;
+    width: 100%;
+    border: solid $warning;
+    margin-bottom: 1;
+    background: $panel;
+}
+
+#request-list-view {
+    height: auto;
+    width: 100%;
+}
+
+RequestListItem {
+    padding: 1 2;
+    height: auto;
+}
+
+.request-item-title {
+    text-style: bold;
+    color: $warning;
+}
+
+.request-item-subtitle {
+    color: $text-muted;
+}
+
+#broadcast-status {
+    color: $success;
+    content-align: center middle;
+    margin: 0 0 1 0;
+    text-wrap: wrap;
 }

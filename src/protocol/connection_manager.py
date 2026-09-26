@@ -28,6 +28,7 @@ class ConnectionManager:
         self._handlers: set[PacketHandler] = set()
         self._running = False
         self._listener_tasks: dict[str, asyncio.Task] = {}
+        self._server: asyncio.AbstractServer | None = None
 
     async def start(self) -> None:
         """Start the connection manager."""
@@ -48,6 +49,23 @@ class ConnectionManager:
             return
 
         self._running = False
+
+        for connection in list(self._connections.values()):
+            await self.disconnect(connection.id)
+
+        for task in list(self._listener_tasks.values()):
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        self._listener_tasks.clear()
+
+        if self._server is not None:
+            self._server.close()
+            await self._server.wait_closed()
+            self._server = None
 
     async def connect(self, remote_device: Device) -> Connection:
         """Creates a new connection with a remote device"""

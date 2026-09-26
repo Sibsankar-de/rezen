@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional
+from typing import Optional, Callable
 
 from models.device import Device
 from protocol.broadcaster import Broadcaster
@@ -25,21 +25,34 @@ class BroadcastService:
         self.interval = interval
         self._broadcast_task: asyncio.Task | None = None
 
+        self._on_connection_request: Optional[Callable[[Device], None]] = None
+
     @property
-    def device(self) -> Device:
+    def _device(self) -> Device:
         return self.device_service.get_current_device()
 
     @property
     def port(self) -> int:
-        return self.device.port
+        return self._device.port
 
-    async def start_private_broadcast(self) -> None:
-        """Start the UDP broadcaster and continuously send presence packets every `self.interval` seconds."""
+    async def _ensure_broadcaster(self) -> None:
         if self._broadcaster is None:
             self._broadcaster = Broadcaster(port=self.port)
-        await self._broadcaster.start()
+            await self._broadcaster.start()
+
+    async def start_private_broadcast(
+        self, on_connection_request: Optional[Callable[[Device], None]] = None
+    ) -> None:
+        """Start the UDP broadcaster and continuously send presence packets every `self.interval` seconds."""
+        self._on_connection_request = on_connection_request
+
+        await self._ensure_broadcaster()
         self._broadcast_task = asyncio.create_task(self._periodic_broadcast_loop())
-        logger.info(f"BroadcastService started on port {self.port} with {self.interval}s interval.")
+
+        self._broadcaster.subscribe(self._handle_request_packets)
+        logger.info(
+            f"BroadcastService started on port {self.port} with {self.interval}s interval."
+        )
 
     async def stop_private_broadcast(self) -> None:
         """Stop continuous broadcasting loop and close the UDP broadcaster."""
@@ -73,11 +86,9 @@ class BroadcastService:
         Broadcast a packet over the network.
         If no packet is provided, constructs a default DISCOVER presence packet with Device payload.
         """
-        if self._broadcaster is None:
-            self._broadcaster = Broadcaster(port=self.port)
-            await self._broadcaster.start()
+        await self._ensure_broadcaster()
 
-        current_device = self.device
+        current_device = self._device
         if packet is None:
             packet = Packet(
                 type=PacketType.DISCOVER,
@@ -88,3 +99,18 @@ class BroadcastService:
 
         logger.info(f"Broadcasting packet type='{packet.type}' over the network")
         self._broadcaster.broadcast(packet)
+
+    async def _handle_request_packets(
+        self, packet: Packet, address: tuple[str, int]
+    ) -> None:
+        """Handles incoming connection request packet from a device."""
+        if packet.device_id == self._device.id:
+            return
+
+        if packet.type == PacketType.CONNECTION_REQUEST:
+            try:
+                device = Device.from_payload(packet.payload, fallback_address=address)
+                if self._on_connection_request:
+                    self._on_connection_request(device)
+            except ValueError as err:
+                logger.warning(f"Skipping invalid packet payload: {err}")

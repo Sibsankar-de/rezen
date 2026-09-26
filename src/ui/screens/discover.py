@@ -8,6 +8,7 @@ from textual.widgets import Button, Label, ListItem, ListView
 from models.device import Device
 from protocol.protocol import RLP
 from services.discovery_service import DiscoveryService
+from .connecting import ConnectingScreen
 from ..layout import BaseLayout
 
 
@@ -110,6 +111,11 @@ class DiscoverScreen(Screen):
     async def run_scan(self) -> None:
         """Manual refresh trigger."""
         self._prune_expired_devices()
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        """Open ConnectingScreen when the user clicks a discovered device."""
+        if isinstance(event.item, DeviceListItem):
+            self.app.push_screen(ConnectingScreen(event.item.device))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-scan":
