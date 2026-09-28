@@ -6,6 +6,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from container import container
 from services.broadcast_service import BroadcastService
 from services.device_service import DeviceService
 from utils.logger import get_logger
@@ -44,7 +45,11 @@ async def run_cli_broadcast(
         f"Starting broadcast service on port {device.port} (heartbeat: {interval}s)..."
     )
 
-    broadcast_service = BroadcastService(interval=interval)
+    broadcast_service = BroadcastService(
+        broadcaster=container.broadcaster,
+        device_service=device_service,
+        interval=interval,
+    )
     await broadcast_service.start_private_broadcast()
     await broadcast_service.broadcast()
 

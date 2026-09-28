@@ -9,7 +9,9 @@ class PacketType(StrEnum):
     DISCOVER = "discover"
     DISCOVER_RESPONSE = "discover_response"
     CONNECTION_REQUEST = "connection_request"
-    CONNECTION_ACCEPTED = "CONNECTION_ACCEPTED"
+    CONNECTION_ACCEPTED = "connection_accepted"
+    HELLO = "hello"
+    HELLO_ACK = "hello_ack"
     CLIPBOARD = "clipboard"
     PING = "ping"
 

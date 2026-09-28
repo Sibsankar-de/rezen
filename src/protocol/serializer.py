@@ -1,4 +1,6 @@
+import asyncio
 import json
+import struct
 from dataclasses import asdict
 from typing import Any
 
@@ -62,3 +64,67 @@ class PacketSerializer:
 
         if missing:
             raise ValueError(f"Missing packet field(s): {', '.join(missing)}")
+
+
+class TCPSerializer:
+    """
+    Serializes and deserializes Rezen packets for TCP transport.
+
+    TCP is a byte stream, so every serialized packet is prefixed
+    with a 4-byte unsigned integer containing the payload length.
+    """
+
+    HEADER_SIZE = 4
+    MAX_PACKET_SIZE = 64 * 1024
+
+    @classmethod
+    def serialize(cls, packet: Packet[Any]) -> bytes:
+        """
+        Convert a Packet into a length-prefixed byte frame.
+        """
+        payload = PacketSerializer.dumps(packet)
+        size = len(payload)
+
+        if size > cls.MAX_PACKET_SIZE:
+            raise ValueError(f"Packet too large: {size} bytes")
+
+        header = struct.pack("!I", size)
+        return header + payload
+
+    @classmethod
+    async def deserialize(
+        cls, stream_or_data: asyncio.StreamReader | bytes
+    ) -> Packet[Any]:
+        """
+        Deserialize one complete TCP frame from an asyncio.StreamReader or bytes.
+        """
+        if isinstance(stream_or_data, asyncio.StreamReader):
+            header = await stream_or_data.readexactly(cls.HEADER_SIZE)
+            (size,) = struct.unpack("!I", header)
+
+            if size > cls.MAX_PACKET_SIZE:
+                raise ValueError(f"Packet too large: {size} bytes")
+
+            payload = await stream_or_data.readexactly(size)
+            return PacketSerializer.loads(payload)
+
+        data = stream_or_data
+        if len(data) < cls.HEADER_SIZE:
+            raise ValueError("Incomplete TCP frame")
+
+        size = struct.unpack(
+            "!I",
+            data[: cls.HEADER_SIZE],
+        )[0]
+
+        if size > cls.MAX_PACKET_SIZE:
+            raise ValueError(f"Packet too large: {size} bytes")
+
+        payload = data[cls.HEADER_SIZE :]
+
+        if len(payload) != size:
+            raise ValueError(
+                f"Incomplete TCP frame: expected {size}, got {len(payload)}"
+            )
+
+        return PacketSerializer.loads(payload)

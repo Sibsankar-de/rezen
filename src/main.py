@@ -1,6 +1,7 @@
 import asyncio
 import sys
 from pathlib import Path
+from utils.logger import setup_logging, get_logger
 
 src_dir = Path(__file__).resolve().parent
 if str(src_dir) not in sys.path:
@@ -8,10 +9,17 @@ if str(src_dir) not in sys.path:
 
 from cli.main import cli
 
+setup_logging()
+logger = get_logger(__name__)
+
 
 def main() -> None:
     """Primary application entry point which starts src/cli/main.py."""
+    logger.info("Starting rezen.")
+
     asyncio.run(cli())
+
+    logger.info("Stopping rezen.")
 
 
 if __name__ == "__main__":

@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Optional
 import asyncio
 
 
-class ConnectionState(str, Enum):
+class ConnectionState(StrEnum):
     CONNECTING = "connecting"
     CONNECTED = "connected"
     DISCONNECTING = "disconnecting"
@@ -29,3 +29,5 @@ class Connection:
     last_activity_at: Optional[datetime] = None
 
     reconnect_attempts: int = 0
+
+    receive_task: Optional[asyncio.Task] = None
