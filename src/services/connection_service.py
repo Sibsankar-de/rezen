@@ -1,5 +1,4 @@
 import asyncio
-from typing import Optional
 
 from models.device import Device
 from models.connection import Connection, ConnectionState
@@ -22,41 +21,23 @@ class ConnectionService:
         self,
         connection_manager: ConnectionManager,
         broadcaster: Broadcaster,
-        broadcaster_service: Optional[BroadcastService] = None,
-        device_service: Optional[DeviceService] = None,
+        broadcaster_service: BroadcastService,
+        device_service: DeviceService,
     ):
         self._connection_manager = connection_manager
-        self._device_service = device_service or DeviceService()
         self._broadcaster = broadcaster
-        self._broadcaster_service = broadcaster_service or BroadcastService(
-            broadcaster=self._broadcaster,
-            device_service=self._device_service,
-        )
+        self._broadcaster_service = broadcaster_service
+        self._device_service = device_service
 
     @property
     def device(self) -> Device:
         return self._device_service.get_current_device()
-
-    async def _ensure_broadcaster(self) -> None:
-        """Start the broadcaster if it is not already running."""
-        if self._broadcaster is None:
-            self._broadcaster = Broadcaster(port=self.device.port)
-            await self._broadcaster.start()
-
-    async def _ensure_connection_manager(self) -> None:
-        """Start the connection manager if it is not already running."""
-        if self._connection_manager is None:
-            self._connection_manager = ConnectionManager(
-                current_device=self.device, port=self.device.port
-            )
-            await self._connection_manager.start()
 
     async def request_connection(self, to_device: Device) -> None:
         """Send a connection request to the specified device."""
         logger.info(
             f"Sending connection request to {to_device.name} ({to_device.ip}:{to_device.port})"
         )
-        await self._ensure_broadcaster()
 
         request_packet = Packet(
             type=PacketType.CONNECTION_REQUEST,
@@ -67,15 +48,11 @@ class ConnectionService:
 
         self._broadcaster.send(request_packet, (to_device.ip, to_device.port))
 
-        # start the connection manager
-        await self._ensure_connection_manager()
-
     async def accept_connection(self, from_device: Device) -> Connection:
         """Accept a connection request from the specified device."""
         logger.info(
             f"Accepting connection from {from_device.name} ({from_device.ip}:{from_device.port})"
         )
-        await self._ensure_broadcaster()
 
         accept_packet = Packet(
             type=PacketType.CONNECTION_ACCEPTED,
@@ -93,7 +70,6 @@ class ConnectionService:
         logger.info(
             f"Establishing TCP connection with {remote_device.name} ({remote_device.ip})"
         )
-        await self._ensure_connection_manager()
 
         try:
             connection = await self._connection_manager.connect(remote_device)
@@ -111,13 +87,10 @@ class ConnectionService:
     async def disconnect_connection(self, connection_id: str) -> None:
         """Disconnect a connection"""
         logger.info(f"Disconnecting connection id={connection_id}")
-        await self._ensure_connection_manager()
         await self._connection_manager.disconnect(connection_id)
 
     async def get_connection(self, from_device: Device) -> Connection | None:
         """Return the connection state for a requested connection"""
-        await self._ensure_connection_manager()
-
         connection_id = self._connection_manager.get_connection_id(from_device)
         connection = self._connection_manager.get_connection(connection_id)
 
@@ -158,5 +131,4 @@ class ConnectionService:
     async def close_connection(self, connection_id: str) -> None:
         """Close or disconnect a connection"""
         logger.info(f"Closing connection id={connection_id}")
-        await self._ensure_connection_manager()
         await self._connection_manager.disconnect(connection_id)

@@ -6,6 +6,7 @@ from typing import Optional
 from rich.console import Console
 from rich.table import Table
 
+from container import container
 from models.device import Device
 from protocol.protocol import RLP
 from services.device_service import DeviceService
@@ -22,8 +23,12 @@ async def run_cli_discover(
     stop_event: Optional[asyncio.Event] = None,
 ) -> None:
     """Run LAN discovery in headless CLI mode continuously until stopped."""
-    discovery_service = DiscoveryService()
-    current_device = DeviceService().get_current_device()
+    device_service = DeviceService()
+    current_device = device_service.get_current_device()
+    discovery_service = DiscoveryService(
+        broadcaster=container.broadcaster,
+        device_service=device_service,
+    )
     devices_cache: dict[str, tuple[Device, float]] = {}
 
     logger.info(

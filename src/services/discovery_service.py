@@ -15,13 +15,12 @@ class DiscoveryService:
 
     def __init__(
         self,
-        broadcaster: Optional[Broadcaster] = None,
-        device_service: Optional[DeviceService] = None,
+        broadcaster: Broadcaster,
+        device_service: DeviceService,
     ):
-        self.device_service = device_service or DeviceService()
         self.broadcaster = broadcaster
+        self.device_service = device_service
         self._on_device_discovered: Optional[Callable[[Device], None]] = None
-        self._own_broadcaster = False
 
     @property
     def device_id(self) -> str:
@@ -36,22 +35,16 @@ class DiscoveryService:
     ) -> None:
         """Start listening continuously for presence broadcasts on the local network."""
         self._on_device_discovered = on_device_discovered
-        self._own_broadcaster = self.broadcaster is None
-        if self.broadcaster is None:
-            self.broadcaster = Broadcaster(port=self.port)
-
         self.broadcaster.subscribe(self._handle_packet)
         await self.broadcaster.start()
-        logger.info(f"DiscoveryService started continuous listening on port {self.port}.")
+        logger.info(
+            f"DiscoveryService started continuous listening on port {self.port}."
+        )
 
     async def stop_discovery(self) -> None:
         """Stop continuous listening for presence broadcasts."""
-        if self.broadcaster is not None:
-            self.broadcaster.unsubscribe(self._handle_packet)
-            if self._own_broadcaster:
-                await self.broadcaster.stop()
-                self.broadcaster = None
-            logger.info("DiscoveryService stopped listening.")
+        self.broadcaster.unsubscribe(self._handle_packet)
+        logger.info("DiscoveryService stopped listening.")
 
     def _handle_packet(self, packet: Packet, address: tuple[str, int]) -> None:
         if packet.device_id == self.device_id:

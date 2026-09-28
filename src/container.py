@@ -79,7 +79,7 @@ class Container:
             )
         return self._connection_service
 
-    def broadcast_service(self) -> BroadcastService:
+    def broadcast_service(self, interval: float = 2.0) -> BroadcastService:
         """
         Create a fresh BroadcastService backed by the shared Broadcaster.
         Each BroadcastScreen gets its own instance so start/stop are isolated.
@@ -87,6 +87,7 @@ class Container:
         return BroadcastService(
             broadcaster=self.broadcaster,
             device_service=self.device_service,
+            interval=interval,
         )
 
     def discovery_service(self) -> DiscoveryService:

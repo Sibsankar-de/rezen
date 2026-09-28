@@ -15,20 +15,22 @@ from services.broadcast_service import BroadcastService
 
 @pytest.mark.asyncio
 async def test_broadcast_service_start_stop():
+    mock_broadcaster = MagicMock()
     mock_dev_service = MagicMock()
     device = Device(id="local_dev", name="Local Device", hostname="host", ip="127.0.0.1", port=45871, os="Linux")
     mock_dev_service.get_current_device.return_value = device
 
-    service = BroadcastService(device_service=mock_dev_service)
+    service = BroadcastService(broadcaster=mock_broadcaster, device_service=mock_dev_service)
     await service.start_private_broadcast()
 
     assert service._broadcaster is not None
     assert service._broadcast_task is not None
+    mock_broadcaster.subscribe.assert_called_once()
 
     await service.stop_private_broadcast()
 
-    assert service._broadcaster is None
     assert service._broadcast_task is None
+    mock_broadcaster.unsubscribe.assert_called_once()
 
 
 @pytest.mark.asyncio
