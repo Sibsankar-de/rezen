@@ -1,12 +1,12 @@
 /* Screen Styles - HomeScreen, BroadcastScreen, DiscoverScreen, ConnectingScreen */
 
-HomeScreen, BroadcastScreen, DiscoverScreen, ConnectingScreen {
+HomeScreen, BroadcastScreen, DiscoverScreen, ConnectingScreen, ConnectedScreen {
     align: center middle;
     height: 100%;
     width: 100%;
 }
 
-#welcome-card, #broadcast-card, #discover-card, #connecting-card {
+#welcome-card, #broadcast-card, #discover-card, #connecting-card, #connected-card {
     width: 70;
     height: auto;
     border: heavy $accent;
@@ -15,14 +15,14 @@ HomeScreen, BroadcastScreen, DiscoverScreen, ConnectingScreen {
     align: center middle;
 }
 
-#welcome-title, #broadcast-title, #discover-title, #connecting-title {
+#welcome-title, #broadcast-title, #discover-title, #connecting-title, #connected-title {
     text-style: bold;
     color: $accent;
     content-align: center middle;
     margin-bottom: 1;
 }
 
-#welcome-subtitle, #broadcast-subtitle, #discover-subtitle, #connecting-subtitle {
+#welcome-subtitle, #broadcast-subtitle, #discover-subtitle, #connecting-subtitle, #connected-subtitle {
     color: $text-muted;
     content-align: center middle;
     margin-bottom: 1;
@@ -107,6 +107,23 @@ DeviceListItem {
 
 #connecting-status {
     color: $text-muted;
+    content-align: center middle;
+    margin-bottom: 1;
+    text-wrap: wrap;
+}
+
+/* ── ConnectedScreen ──────────────────────────────────────── */
+
+#connected-info {
+    color: $text;
+    content-align: center middle;
+    margin: 1 0;
+    padding: 1;
+    border: dashed $accent;
+}
+
+#connected-status {
+    color: $success;
     content-align: center middle;
     margin-bottom: 1;
     text-wrap: wrap;

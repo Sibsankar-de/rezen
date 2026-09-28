@@ -393,3 +393,20 @@ class ConnectionManager:
             await writer.wait_closed()
         except Exception:
             pass
+
+    def get_connection(self, connection_id: str) -> Connection | None:
+        """Find the connection by id"""
+        connection = self._connections.get(connection_id, None)
+        if connection is not None:
+            return connection
+
+        device_id = connection_id.split(":")[0]
+        for conn in self._connections.values():
+            if conn.device_id == device_id:
+                return conn
+
+        return None
+
+    @staticmethod
+    def get_connection_id(device: Device) -> str:
+        return f"{device.id}:{device.ip}:{device.port}"

@@ -44,10 +44,15 @@ class HomeScreen(Screen):
                 BroadcastScreen(
                     broadcast_service=container.broadcast_service(),
                     connection_service=container.connection_service,
+                    device_service=container.device_service,
                 )
             )
         elif event.button.id == "btn-discover":
             logger.info("User navigating to DiscoverScreen.")
             self.app.push_screen(
-                DiscoverScreen(discovery_service=container.discovery_service())
+                DiscoverScreen(
+                    discovery_service=container.discovery_service(),
+                    connection_service=container.connection_service,
+                    device_service=container.device_service,
+                )
             )

@@ -74,6 +74,7 @@ class Container:
             self._connection_service = ConnectionService(
                 broadcaster=self.broadcaster,
                 connection_manager=self.connection_manager,
+                broadcaster_service=self.broadcast_service(),
                 device_service=self.device_service,
             )
         return self._connection_service

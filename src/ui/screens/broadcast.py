@@ -1,13 +1,17 @@
+from typing import Optional
 from textual import work
 from textual.app import ComposeResult
 from textual.containers import Center, Middle, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Label, ListItem, ListView
 
+from container import container
 from models.device import Device
 from services.broadcast_service import BroadcastService
 from services.connection_service import ConnectionService
+from services.device_service import DeviceService
 from utils.logger import get_logger
+from .connected import ConnectedScreen
 from ..layout import BaseLayout
 
 logger = get_logger(__name__)
@@ -37,11 +41,13 @@ class BroadcastScreen(Screen):
         self,
         broadcast_service: BroadcastService,
         connection_service: ConnectionService,
+        device_service: Optional[DeviceService] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self._broadcast_service = broadcast_service
         self._connection_service = connection_service
+        self._device_service = device_service or container.device_service
         self._pending_requests: dict[str, Device] = {}
 
     def compose(self) -> ComposeResult:
@@ -132,6 +138,14 @@ class BroadcastScreen(Screen):
             logger.info(f"Connection accepted successfully: id={connection.id} with {device.name}")
             self._set_status(
                 f"✅ Connected to {device.name} (connection id: {connection.id})"
+            )
+            self.app.push_screen(
+                ConnectedScreen(
+                    device=device,
+                    connection=connection,
+                    connection_service=self._connection_service,
+                    device_service=self._device_service,
+                )
             )
         except Exception as exc:
             logger.error(f"Failed to accept connection from {device.name}: {exc}", exc_info=True)

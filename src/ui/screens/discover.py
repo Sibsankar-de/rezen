@@ -1,12 +1,16 @@
 import time
+from typing import Optional
 from textual import work
 from textual.app import ComposeResult
 from textual.containers import Center, Horizontal, Middle, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Label, ListItem, ListView
 
+from container import container
 from models.device import Device
 from protocol.protocol import RLP
+from services.connection_service import ConnectionService
+from services.device_service import DeviceService
 from services.discovery_service import DiscoveryService
 from utils.logger import get_logger
 from .connecting import ConnectingScreen
@@ -38,10 +42,14 @@ class DiscoverScreen(Screen):
     def __init__(
         self,
         discovery_service: DiscoveryService,
+        connection_service: Optional[ConnectionService] = None,
+        device_service: Optional[DeviceService] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self._discovery_service = discovery_service
+        self._connection_service = connection_service or container.connection_service
+        self._device_service = device_service or container.device_service
         self._devices_cache: dict[str, tuple[Device, float]] = {}
         self._scan_timer = None
 
@@ -131,7 +139,13 @@ class DiscoverScreen(Screen):
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         """Open ConnectingScreen when the user clicks a discovered device."""
         if isinstance(event.item, DeviceListItem):
-            self.app.push_screen(ConnectingScreen(device=event.item.device))
+            self.app.push_screen(
+                ConnectingScreen(
+                    device=event.item.device,
+                    connection_service=self._connection_service,
+                    device_service=self._device_service,
+                )
+            )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-scan":
