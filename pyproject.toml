@@ -5,6 +5,10 @@ description = "Remote Device & Screen Control CLI"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "av>=19.0.0",
+    "mss>=10.2.0",
+    "numpy>=2.5.3",
+    "opencv-python>=5.0.0.93",
     "psutil>=7.2.2",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.2",
