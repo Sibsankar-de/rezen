@@ -15,6 +15,8 @@ class PacketType(StrEnum):
     CLIPBOARD = "clipboard"
     PING = "ping"
 
+    SCREEN_FRAME_CHUNK = "screen_frame_chunk"
+
 
 @dataclass(slots=True)
 class Packet(Generic[T]):

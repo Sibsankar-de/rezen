@@ -104,3 +104,55 @@ class H264Encoder:
         self.flush()
         self._codec.close()
         self._closed = True
+
+
+class H264Decoder:
+    """Synchronous H.264 decoder using PyAV."""
+
+    def __init__(self) -> None:
+        self._closed = False
+
+        self._codec = av.CodecContext.create(
+            "h264",
+            "r",
+        )
+
+    def decode(self, data: bytes) -> list[np.ndarray]:
+        """
+        Decode a complete H.264 encoded data unit.
+        """
+
+        if self._closed:
+            raise RuntimeError("Decoder is closed")
+
+        if not data:
+            return []
+
+        packet = av.Packet(data)
+
+        frames = self._codec.decode(packet)
+
+        return [frame.to_ndarray(format="bgr24") for frame in frames]
+
+    def flush(self) -> list[np.ndarray]:
+        """
+        Flush any frames buffered by the decoder.
+        """
+
+        if self._closed:
+            return []
+
+        frames = self._codec.decode(None)
+
+        return [frame.to_ndarray(format="bgr24") for frame in frames]
+
+    def close(self) -> None:
+        """Release decoder resources."""
+
+        if self._closed:
+            return
+
+        self.flush()
+        self._codec.close()
+
+        self._closed = True

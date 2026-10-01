@@ -29,9 +29,15 @@ class ConnectionService:
         self._broadcaster_service = broadcaster_service
         self._device_service = device_service
 
+        self._latest_connection: Connection | None = None
+
     @property
     def device(self) -> Device:
         return self._device_service.get_current_device()
+
+    @property
+    def latest_connection(self) -> Connection | None:
+        return self._latest_connection
 
     async def request_connection(self, to_device: Device) -> None:
         """Send a connection request to the specified device."""
@@ -73,6 +79,7 @@ class ConnectionService:
 
         try:
             connection = await self._connection_manager.connect(remote_device)
+            self._latest_connection = connection
             logger.info(
                 f"Connection established: id={connection.id} with {remote_device.name}"
             )
@@ -132,3 +139,12 @@ class ConnectionService:
         """Close or disconnect a connection"""
         logger.info(f"Closing connection id={connection_id}")
         await self._connection_manager.disconnect(connection_id)
+
+    async def send_to_latest(self, packet: Packet) -> None:
+        """Send packet to latest connection"""
+        if not self._latest_connection:
+            return
+
+        await self._connection_manager.send(
+            connection_id=self._latest_connection.id, packet=packet
+        )
