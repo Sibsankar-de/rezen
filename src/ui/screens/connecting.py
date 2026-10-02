@@ -87,10 +87,21 @@ class ConnectingScreen(Screen):
                 await self._connection_service.complete_connection(connection)
                 self._connection = connection
                 logger.info(f"Connected to {self._device.name} successfully (id: {connection.id}).")
+                self._set_status(f"✅ Connected to {self._device.name}!")
+                self._show_connected()
 
                 # The device which discovered will be the receiver:
                 logger.info("Starting screen cast receiving as discovered receiver...")
-                await self._screen_cast_service.start_receiving()
+                try:
+                    await asyncio.wait_for(
+                        self._screen_cast_service.start_receiving(),
+                        timeout=5.0,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        f"Screen cast receiving startup delayed or error: {exc}",
+                        exc_info=True,
+                    )
 
                 self.app.switch_screen(
                     ConnectedScreen(

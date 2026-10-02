@@ -1,3 +1,4 @@
+import asyncio
 from typing import Optional
 from textual import work
 from textual.app import ComposeResult
@@ -143,7 +144,16 @@ class BroadcastScreen(Screen):
                 f"✅ Connected to {device.name} (connection id: {connection.id})"
             )
             logger.info("Starting screen cast streaming as broadcaster...")
-            await self._screen_cast_service.start_streaming()
+            try:
+                await asyncio.wait_for(
+                    self._screen_cast_service.start_streaming(),
+                    timeout=5.0,
+                )
+            except Exception as exc:
+                logger.warning(
+                    f"Screen cast streaming startup delayed or error: {exc}",
+                    exc_info=True,
+                )
 
             self.app.push_screen(
                 ConnectedScreen(

@@ -7,6 +7,18 @@ from screen_cast.h264 import H264Decoder
 from screen_cast.renderer import ScreenRenderer
 
 
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def _chunk_sort_key(chunk_id: str) -> int:
+    try:
+        return int(chunk_id.split("_")[-1])
+    except (ValueError, IndexError):
+        return 0
+
+
 class FrameBuffer:
     """Frame buffer to reassemble the bytes"""
 
@@ -15,14 +27,27 @@ class FrameBuffer:
 
     def add(self, chunk: StreamChunk) -> bytes | None:
         """Collect chunks and reconstruct the bytes"""
-
         frame = self.frames.setdefault(chunk.frame_id, {})
         frame[chunk.chunk_id] = chunk.data
 
-        if chunk.flag != FlagType.END_CHUNK:
+        # If not marked as end chunk and we don't yet have all chunks, wait for more
+        if chunk.flag != FlagType.END_CHUNK and len(frame) < chunk.total_chunks:
             return None
 
-        data = b"".join(frame[chunk_id] for chunk_id in sorted(frame))
+        # Clean up stale uncompleted frames if buffer grows too large
+        if len(self.frames) > 50:
+            oldest_keys = list(self.frames.keys())[:-30]
+            for old_key in oldest_keys:
+                del self.frames[old_key]
+
+        # Incomplete frame due to dropped chunks
+        if len(frame) < chunk.total_chunks:
+            del self.frames[chunk.frame_id]
+            return None
+
+        # Sort chunks numerically by chunk index
+        sorted_keys = sorted(frame.keys(), key=_chunk_sort_key)
+        data = b"".join(frame[cid] for cid in sorted_keys)
 
         del self.frames[chunk.frame_id]
 
@@ -65,7 +90,10 @@ class Receiver:
             return
 
         self._running = True
-        await asyncio.to_thread(self.renderer.start)
+        try:
+            await asyncio.wait_for(asyncio.to_thread(self.renderer.start), timeout=3.0)
+        except Exception as exc:
+            logger.warning(f"Renderer start encountered error or timed out: {exc}")
 
     async def stop(self) -> None:
         """Stops the receiver"""
@@ -90,15 +118,20 @@ class Receiver:
 
     async def handle_chunk(self, chunk: StreamChunk) -> None:
         """Handle incoming stream chunks"""
+        if not self._running:
+            return
 
         data = self._buffer.add(chunk)
 
         if not data:
             return
 
-        frames = await asyncio.to_thread(self.decoder.decode, data)
-
-        await asyncio.to_thread(self._render_frames, frames)
+        try:
+            frames = await asyncio.to_thread(self.decoder.decode, data)
+            if frames:
+                await asyncio.to_thread(self._render_frames, frames)
+        except Exception as exc:
+            logger.error(f"Error decoding or rendering chunk: {exc}", exc_info=True)
 
         if self.renderer.isClosed:
             await self.stop()

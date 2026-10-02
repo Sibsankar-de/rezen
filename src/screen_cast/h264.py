@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from fractions import Fraction
 
 import av
 import numpy as np
@@ -24,8 +25,8 @@ class H264Encoder:
         preset: str = "ultrafast",
         tune: str = "zerolatency",
     ) -> None:
-        self.width = width
-        self.height = height
+        self.width = width - (width % 2)
+        self.height = height - (height % 2)
         self.fps = fps
         self.bitrate = bitrate
 
@@ -34,12 +35,13 @@ class H264Encoder:
 
         self._codec = av.CodecContext.create("libx264", "w")
 
-        self._codec.width = width
-        self._codec.height = height
+        self._codec.width = self.width
+        self._codec.height = self.height
         self._codec.pix_fmt = "yuv420p"
 
-        self._codec.time_base = av.Rational(1, fps)
-        self._codec.framerate = av.Rational(fps, 1)
+        self._codec.time_base = Fraction(1, fps)
+        self._codec.framerate = Fraction(fps, 1)
+        self._codec.gop_size = fps
 
         self._codec.bit_rate = bitrate
 
@@ -56,10 +58,15 @@ class H264Encoder:
         if self._closed:
             raise RuntimeError("Encoder is closed")
 
-        expected_shape = (self.height, self.width, 4)
+        if frame.shape[0] != self.height or frame.shape[1] != self.width:
+            if frame.shape[0] >= self.height and frame.shape[1] >= self.width:
+                frame = frame[:self.height, :self.width]
+            else:
+                expected_shape = (self.height, self.width, 4)
+                raise ValueError(f"Expected {expected_shape}, got {frame.shape}")
 
-        if frame.shape != expected_shape:
-            raise ValueError(f"Expected {expected_shape}, got {frame.shape}")
+        if not frame.flags["C_CONTIGUOUS"]:
+            frame = np.ascontiguousarray(frame)
 
         video_frame = av.VideoFrame.from_ndarray(
             frame,
@@ -85,15 +92,18 @@ class H264Encoder:
         if self._closed:
             return []
 
-        return [
-            EncodedPacket(
-                data=bytes(packet),
-                pts=packet.pts,
-                dts=packet.dts,
-                is_keyframe=packet.is_keyframe,
-            )
-            for packet in self._codec.encode(None)
-        ]
+        try:
+            return [
+                EncodedPacket(
+                    data=bytes(packet),
+                    pts=packet.pts,
+                    dts=packet.dts,
+                    is_keyframe=packet.is_keyframe,
+                )
+                for packet in self._codec.encode(None)
+            ]
+        except Exception:
+            return []
 
     def close(self) -> None:
         """Flush and release encoder resources."""
@@ -101,8 +111,16 @@ class H264Encoder:
         if self._closed:
             return
 
-        self.flush()
-        self._codec.close()
+        try:
+            self.flush()
+        except Exception:
+            pass
+
+        try:
+            self._codec.close()
+        except Exception:
+            pass
+
         self._closed = True
 
 
@@ -128,11 +146,12 @@ class H264Decoder:
         if not data:
             return []
 
-        packet = av.Packet(data)
-
-        frames = self._codec.decode(packet)
-
-        return [frame.to_ndarray(format="bgr24") for frame in frames]
+        try:
+            packet = av.Packet(data)
+            frames = self._codec.decode(packet)
+            return [frame.to_ndarray(format="bgr24") for frame in frames]
+        except Exception:
+            return []
 
     def flush(self) -> list[np.ndarray]:
         """
@@ -142,9 +161,11 @@ class H264Decoder:
         if self._closed:
             return []
 
-        frames = self._codec.decode(None)
-
-        return [frame.to_ndarray(format="bgr24") for frame in frames]
+        try:
+            frames = self._codec.decode(None)
+            return [frame.to_ndarray(format="bgr24") for frame in frames]
+        except Exception:
+            return []
 
     def close(self) -> None:
         """Release decoder resources."""
@@ -152,7 +173,14 @@ class H264Decoder:
         if self._closed:
             return
 
-        self.flush()
-        self._codec.close()
+        try:
+            self.flush()
+        except Exception:
+            pass
+
+        try:
+            self._codec.close()
+        except Exception:
+            pass
 
         self._closed = True

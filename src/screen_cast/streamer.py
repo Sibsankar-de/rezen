@@ -93,16 +93,33 @@ class Streamer:
 
     async def _capture_loop(self) -> None:
         """Captures the frames and push into queue"""
+        target_fps = 30
+        frame_interval = 1.0 / target_fps
 
         while self._running:
+            loop_start = asyncio.get_running_loop().time()
             try:
                 frame = await asyncio.to_thread(self.capture.capture)
+                if self._frame_queue.full():
+                    try:
+                        self._frame_queue.get_nowait()
+                        self._frame_queue.task_done()
+                    except (asyncio.QueueEmpty, ValueError):
+                        pass
                 await self._frame_queue.put(frame)
             except asyncio.CancelledError:
                 break
             except Exception:
                 logger.error("Error in screen capture loop", exc_info=True)
                 break
+
+            elapsed = asyncio.get_running_loop().time() - loop_start
+            sleep_time = frame_interval - elapsed
+            if sleep_time > 0:
+                try:
+                    await asyncio.sleep(sleep_time)
+                except asyncio.CancelledError:
+                    break
 
     async def _encode_loop(self) -> None:
         """Consume queue and encode and send frames"""
@@ -116,7 +133,6 @@ class Streamer:
             try:
                 await self._encode_and_send_chunk(frame)
             except asyncio.CancelledError:
-                self._frame_queue.task_done()
                 break
             except Exception:
                 logger.error("Error in screen encode loop", exc_info=True)
@@ -131,12 +147,12 @@ class Streamer:
             chunks = self._create_chunks(packet.data, settings.STREAM_CHUNK_SIZE)
 
             for chunk_index, data in enumerate(chunks):
-                chunk_falg = FlagType.MEDIATE_CHUNK
-
-                if chunk_index == 0:
-                    chunk_falg = FlagType.START_CHUNK
-                elif chunk_index == len(chunks) - 1:
-                    chunk_falg = FlagType.END_CHUNK
+                if chunk_index == len(chunks) - 1:
+                    chunk_flag = FlagType.END_CHUNK
+                elif chunk_index == 0:
+                    chunk_flag = FlagType.START_CHUNK
+                else:
+                    chunk_flag = FlagType.MEDIATE_CHUNK
 
                 stream_chunk = StreamChunk(
                     frame_id=f"frame_{self._frame_index}",
@@ -145,7 +161,7 @@ class Streamer:
                     size=len(data),
                     total_chunks=len(chunks),
                     type=ChunkType.VIDEO,
-                    flag=chunk_falg,
+                    flag=chunk_flag,
                 )
 
                 # send the chunk

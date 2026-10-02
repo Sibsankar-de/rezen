@@ -17,17 +17,25 @@ class ScreenCapture:
         self._sct = mss.mss()
 
         monitors = self._sct.monitors
+        if not monitors:
+            raise RuntimeError("MSS detected no monitors")
 
-        if monitor < 1 or monitor >= len(monitors):
-            raise ValueError(
-                f"Invalid monitor {monitor}. "
-                f"Available monitors: 1-{len(monitors) - 1}"
-            )
+        if 1 <= monitor < len(monitors):
+            selected_monitor = monitors[monitor]
+        elif len(monitors) > 1:
+            selected_monitor = monitors[1]
+        else:
+            selected_monitor = monitors[0]
 
-        self._monitor = monitors[monitor]
+        raw_width = selected_monitor["width"]
+        raw_height = selected_monitor["height"]
 
-        self._width = self._monitor["width"]
-        self._height = self._monitor["height"]
+        self._width = raw_width - (raw_width % 2)
+        self._height = raw_height - (raw_height % 2)
+
+        self._monitor = dict(selected_monitor)
+        self._monitor["width"] = self._width
+        self._monitor["height"] = self._height
 
         self._closed = False
 
@@ -64,5 +72,8 @@ class ScreenCapture:
         if self._closed:
             return
 
-        self._sct.close()
+        try:
+            self._sct.close()
+        except Exception:
+            pass
         self._closed = True
