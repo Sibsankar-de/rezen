@@ -1,12 +1,8 @@
 import asyncio
-import numpy as np
-from typing import Optional
 
-from models.stream_chunk import StreamChunk, FlagType
+from models.stream_chunk import FlagType, StreamChunk
 from screen_cast.h264 import H264Decoder
 from screen_cast.renderer import ScreenRenderer
-
-
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -62,9 +58,9 @@ class Receiver:
 
     def __init__(
         self,
-        decoder: Optional[H264Decoder] = None,
-        buffer: Optional[FrameBuffer] = None,
-        renderer: Optional[ScreenRenderer] = None,
+        decoder: H264Decoder | None = None,
+        buffer: FrameBuffer | None = None,
+        renderer: ScreenRenderer | None = None,
     ):
         self._running = False
 
@@ -90,10 +86,7 @@ class Receiver:
             return
 
         self._running = True
-        try:
-            await asyncio.wait_for(asyncio.to_thread(self.renderer.start), timeout=3.0)
-        except Exception as exc:
-            logger.warning(f"Renderer start encountered error or timed out: {exc}")
+        self.renderer.start()
 
     async def stop(self) -> None:
         """Stops the receiver"""
@@ -129,17 +122,11 @@ class Receiver:
         try:
             frames = await asyncio.to_thread(self.decoder.decode, data)
             if frames:
-                await asyncio.to_thread(self._render_frames, frames)
+                for frame in frames:
+                    if not self.renderer.display(frame):
+                        break
         except Exception as exc:
             logger.error(f"Error decoding or rendering chunk: {exc}", exc_info=True)
 
         if self.renderer.isClosed:
             await self.stop()
-
-    def _render_frames(self, frames: list[np.ndarray]):
-        """Render frames using renderer"""
-        for frame in frames:
-            self.renderer.display(frame)
-
-            if self.renderer.isClosed:
-                break

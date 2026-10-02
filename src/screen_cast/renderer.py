@@ -1,3 +1,6 @@
+import queue
+import threading
+
 import cv2
 import numpy as np
 
@@ -8,59 +11,113 @@ logger = get_logger(__name__)
 
 
 class ScreenRenderer:
-    """Render the frames in a window"""
+    """Render the frames in a dedicated window thread."""
 
     def __init__(self):
         self._closed = True
         self._window_name = settings.SCREEN_RENDER_WINDOW_NAME
+        self._queue: queue.Queue[np.ndarray | None] = queue.Queue(maxsize=30)
+        self._thread: threading.Thread | None = None
 
     @property
     def isClosed(self) -> bool:
         return self._closed
 
     def start(self) -> None:
+        """Start the renderer thread."""
         if not self._closed:
             return
 
         self._closed = False
-        try:
-            cv2.namedWindow(self._window_name, cv2.WINDOW_NORMAL)
-        except Exception as exc:
-            logger.warning(f"Could not create named window immediately: {exc}")
+        self._thread = threading.Thread(
+            target=self._render_loop, name="ScreenRendererThread", daemon=True
+        )
+        self._thread.start()
 
     def display(self, frame: np.ndarray) -> bool:
-        """Render the frame and display in windows"""
+        """Queue frame for rendering."""
         if self._closed:
             return False
 
+        # Drop oldest frame if queue is full to avoid latency build-up
+        if self._queue.full():
+            try:
+                self._queue.get_nowait()
+            except queue.Empty:
+                pass
+
         try:
-            cv2.imshow(winname=self._window_name, mat=frame)
-            key = cv2.waitKey(1) & 0xFF
-
-            # Close on 'q' or ESC
-            if key == ord("q") or key == 27:
-                self.close()
-                return False
-
-            # Detect if user closed the window by clicking the 'X' button
-            prop = cv2.getWindowProperty(self._window_name, cv2.WND_PROP_VISIBLE)
-            if prop < 1:
-                self.close()
-                return False
-
+            self._queue.put_nowait(frame)
             return True
-        except Exception as exc:
-            logger.warning(f"Error displaying frame in renderer: {exc}")
+        except queue.Full:
             return False
 
     def close(self) -> None:
-        """Close the window and clear"""
+        """Signal the render thread to stop and clean up."""
         if self._closed:
             return
 
         self._closed = True
         try:
-            cv2.destroyWindow(self._window_name)
-            cv2.waitKey(1)
-        except Exception:
+            self._queue.put_nowait(None)
+        except queue.Full:
             pass
+
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join(timeout=1.0)
+        self._thread = None
+
+    def _render_loop(self) -> None:
+        """Dedicated render thread body handling all OpenCV GUI operations."""
+        window_created = False
+        try:
+            while not self._closed:
+                try:
+                    frame = self._queue.get(timeout=0.05)
+                except queue.Empty:
+                    # Pump events periodically even when idle to prevent OS "Not Responding"
+                    if window_created and not self._closed:
+                        key = cv2.waitKey(1) & 0xFF
+                        if key == ord("q") or key == 27:
+                            self._closed = True
+                            break
+                        if cv2.getWindowProperty(self._window_name, cv2.WND_PROP_VISIBLE) < 1:
+                            self._closed = True
+                            break
+                    continue
+
+                if frame is None or self._closed:
+                    break
+
+                if not window_created:
+                    try:
+                        cv2.namedWindow(self._window_name, cv2.WINDOW_NORMAL)
+                        window_created = True
+                    except Exception as exc:
+                        logger.warning(f"Could not create named window: {exc}")
+
+                try:
+                    cv2.imshow(winname=self._window_name, mat=frame)
+                    key = cv2.waitKey(1) & 0xFF
+
+                    if key == ord("q") or key == 27:
+                        self._closed = True
+                        break
+
+                    prop = cv2.getWindowProperty(self._window_name, cv2.WND_PROP_VISIBLE)
+                    if prop < 1:
+                        self._closed = True
+                        break
+                except Exception as exc:
+                    logger.warning(f"Error displaying frame in renderer: {exc}")
+        except Exception as exc:
+            logger.error(f"Unexpected error in ScreenRenderer loop: {exc}", exc_info=True)
+        finally:
+            if window_created:
+                try:
+                    cv2.destroyWindow(self._window_name)
+                    for _ in range(4):
+                        cv2.waitKey(1)
+                except Exception:
+                    pass
+            self._closed = True
