@@ -8,7 +8,9 @@ import numpy as np
 
 from settings import settings
 from utils.logger import get_logger
+from utils.multiprocessing_fix import apply_multiprocessing_fix
 
+apply_multiprocessing_fix()
 logger = get_logger(__name__)
 
 
@@ -141,6 +143,7 @@ class ScreenRenderer:
             return
 
         self._closed = False
+        apply_multiprocessing_fix()
         ctx = mp.get_context("spawn")
         self._queue = ctx.Queue(maxsize=30)
         self._stop_event = ctx.Event()

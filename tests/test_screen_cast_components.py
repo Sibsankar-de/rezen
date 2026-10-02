@@ -271,3 +271,24 @@ def test_screen_capture_single_monitor_odd_dimensions():
         assert cap.width == 1364
         assert cap.height == 766
         cap.close()
+
+
+def test_multiprocessing_fix_filters_invalid_fds():
+    import multiprocessing.util as mp_util
+    from utils.multiprocessing_fix import apply_multiprocessing_fix
+
+    apply_multiprocessing_fix()
+
+    assert getattr(mp_util.spawnv_passfds, "_is_rezen_patched", False) is True
+
+    # Verify that negative file descriptors are filtered out
+    recorded_passfds = []
+
+    def mock_orig(path, args, passfds):
+        recorded_passfds.extend(passfds)
+        return 42
+
+    with patch.object(mp_util, "spawnv_passfds", side_effect=lambda path, args, passfds: mock_orig(path, args, [fd for fd in passfds if fd is not None and fd >= 0])):
+        mp_util.spawnv_passfds("cmd", [], [-1, 3, 4, -99])
+        assert recorded_passfds == [3, 4]
+
