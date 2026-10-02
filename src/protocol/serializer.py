@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import struct
 from dataclasses import asdict
@@ -20,8 +21,14 @@ class PacketSerializer:
         """
         Convert a Packet into bytes suitable for network transport.
         """
+        def _default(obj: Any) -> Any:
+            if isinstance(obj, (bytes, bytearray)):
+                return {"__bytes__": base64.b64encode(obj).decode("ascii")}
+            raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
+
         return json.dumps(
             asdict(packet),
+            default=_default,
             separators=(",", ":"),
             ensure_ascii=False,
         ).encode("utf-8")
@@ -31,7 +38,12 @@ class PacketSerializer:
         """
         Convert network bytes back into a Packet.
         """
-        raw = json.loads(data.decode("utf-8"))
+        def _object_hook(obj: dict[str, Any]) -> Any:
+            if "__bytes__" in obj and len(obj) == 1:
+                return base64.b64decode(obj["__bytes__"])
+            return obj
+
+        raw = json.loads(data.decode("utf-8"), object_hook=_object_hook)
 
         PacketSerializer._validate(raw)
 
@@ -75,7 +87,7 @@ class TCPSerializer:
     """
 
     HEADER_SIZE = 4
-    MAX_PACKET_SIZE = 64 * 1024
+    MAX_PACKET_SIZE = 1024 * 1024  # 1 MB
 
     @classmethod
     def serialize(cls, packet: Packet[Any]) -> bytes:

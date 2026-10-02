@@ -1,19 +1,13 @@
-import asyncio
-from typing import Optional
+import base64
 
-from models.stream_chunk import StreamChunk
 from models.connection import Connection
-
-from protocol.packet import Packet, PacketType
+from models.stream_chunk import StreamChunk
 from protocol.connection_manager import ConnectionManager
-
-from screen_cast.streamer import Streamer
+from protocol.packet import Packet, PacketType
 from screen_cast.receiver import Receiver
-
+from screen_cast.streamer import Streamer
 from services.connection_service import ConnectionService
 from services.device_service import DeviceService
-
-
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -27,8 +21,8 @@ class ScreenCastService:
         connection_manager: ConnectionManager,
         connection_service: ConnectionService,
         device_service: DeviceService,
-        streamer: Optional[Streamer] = None,
-        receiver: Optional[Receiver] = None,
+        streamer: Streamer | None = None,
+        receiver: Receiver | None = None,
     ):
         self._connection_manager = connection_manager
         self._connection_service = connection_service
@@ -96,11 +90,21 @@ class ScreenCastService:
         ):
             return
 
-        if not packet or not packet.payload:
+        if not packet or packet.type != PacketType.SCREEN_FRAME_CHUNK or not packet.payload:
             return
 
         payload = packet.payload
         if isinstance(payload, dict):
+            if isinstance(payload.get("data"), str):
+                try:
+                    payload["data"] = base64.b64decode(payload["data"])
+                except Exception:
+                    payload["data"] = payload["data"].encode("utf-8")
             payload = StreamChunk(**payload)
+        elif isinstance(payload, StreamChunk) and isinstance(payload.data, str):
+            try:
+                payload.data = base64.b64decode(payload.data)
+            except Exception:
+                payload.data = payload.data.encode("utf-8")
 
         await self.receiver.handle_chunk(payload)
