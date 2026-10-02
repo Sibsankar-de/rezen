@@ -6,6 +6,7 @@ from services.broadcast_service import BroadcastService
 from services.connection_service import ConnectionService
 from services.device_service import DeviceService
 from services.discovery_service import DiscoveryService
+from services.screen_cast_service import ScreenCastService
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -21,6 +22,7 @@ class Container:
         self._broadcaster: Broadcaster | None = None
         self._connection_manager: ConnectionManager | None = None
         self._connection_service: ConnectionService | None = None
+        self._screen_cast_service: ScreenCastService | None = None
 
     async def start(self) -> None:
         """Start all network-level singletons. Call once at app startup."""
@@ -32,6 +34,10 @@ class Container:
     async def stop(self) -> None:
         """Shut down all network-level singletons. Call once at app teardown."""
         logger.info("Stopping shared network services...")
+        if self._screen_cast_service is not None:
+            await self._screen_cast_service.stop_streaming()
+            await self._screen_cast_service.stop_receiving()
+            self._screen_cast_service = None
         if self._connection_manager is not None:
             await self._connection_manager.stop()
             self._connection_manager = None
@@ -78,6 +84,17 @@ class Container:
                 device_service=self.device_service,
             )
         return self._connection_service
+
+    @property
+    def screen_cast_service(self) -> ScreenCastService:
+        """Singleton ScreenCastService - handles screen casting."""
+        if self._screen_cast_service is None:
+            self._screen_cast_service = ScreenCastService(
+                connection_manager=self.connection_manager,
+                connection_service=self.connection_service,
+                device_service=self.device_service,
+            )
+        return self._screen_cast_service
 
     def broadcast_service(self, interval: float = 2.0) -> BroadcastService:
         """

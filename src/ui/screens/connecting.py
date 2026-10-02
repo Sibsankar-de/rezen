@@ -11,6 +11,7 @@ from models.device import Device
 from models.connection import Connection, ConnectionState
 from services.connection_service import ConnectionService
 from services.device_service import DeviceService
+from services.screen_cast_service import ScreenCastService
 from utils.logger import get_logger
 from .connected import ConnectedScreen
 from ..layout import BaseLayout
@@ -26,12 +27,14 @@ class ConnectingScreen(Screen):
         device: Device,
         connection_service: Optional[ConnectionService] = None,
         device_service: Optional[DeviceService] = None,
+        screen_cast_service: Optional[ScreenCastService] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self._device = device
         self._connection_service = connection_service or container.connection_service
         self._device_service = device_service or container.device_service
+        self._screen_cast_service = screen_cast_service or container.screen_cast_service
         self._connection: Connection | None = None
 
     def compose(self) -> ComposeResult:
@@ -84,12 +87,19 @@ class ConnectingScreen(Screen):
                 await self._connection_service.complete_connection(connection)
                 self._connection = connection
                 logger.info(f"Connected to {self._device.name} successfully (id: {connection.id}).")
+
+                # The device which discovered will be the receiver:
+                logger.info("Starting screen cast receiving as discovered receiver...")
+                await self._screen_cast_service.start_receiving()
+
                 self.app.switch_screen(
                     ConnectedScreen(
                         device=self._device,
                         connection=connection,
                         connection_service=self._connection_service,
                         device_service=self._device_service,
+                        screen_cast_service=self._screen_cast_service,
+                        is_streamer=False,
                     )
                 )
             else:
@@ -133,6 +143,10 @@ class ConnectingScreen(Screen):
                 logger.info(
                     f"Disconnecting connection {self._connection.id} with {self._device.name}"
                 )
+                try:
+                    await self._screen_cast_service.stop_receiving()
+                except Exception:
+                    pass
                 try:
                     await self._connection_service.close_connection(self._connection.id)
                 except Exception as exc:

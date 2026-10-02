@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     STREAM_QUEUE_MAX_SIZE: int = 10000
     STREAM_CHUNK_SIZE: int = 16 * 1024
 
-    SCREEN_RENDER_WINDOW_NAME = "Rezen - Remote screen"
+    SCREEN_RENDER_WINDOW_NAME: str = "Rezen - Remote screen"
 
 
 settings = Settings()

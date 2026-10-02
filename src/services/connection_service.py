@@ -39,6 +39,10 @@ class ConnectionService:
     def latest_connection(self) -> Connection | None:
         return self._latest_connection
 
+    @latest_connection.setter
+    def latest_connection(self, connection: Connection | None) -> None:
+        self._latest_connection = connection
+
     async def request_connection(self, to_device: Device) -> None:
         """Send a connection request to the specified device."""
         logger.info(
@@ -94,6 +98,8 @@ class ConnectionService:
     async def disconnect_connection(self, connection_id: str) -> None:
         """Disconnect a connection"""
         logger.info(f"Disconnecting connection id={connection_id}")
+        if self._latest_connection and self._latest_connection.id == connection_id:
+            self._latest_connection = None
         await self._connection_manager.disconnect(connection_id)
 
     async def get_connection(self, from_device: Device) -> Connection | None:
@@ -108,6 +114,8 @@ class ConnectionService:
 
         if not connection:
             return False
+
+        self._latest_connection = connection
 
         # stops the broadcasting
         try:
@@ -138,6 +146,8 @@ class ConnectionService:
     async def close_connection(self, connection_id: str) -> None:
         """Close or disconnect a connection"""
         logger.info(f"Closing connection id={connection_id}")
+        if self._latest_connection and self._latest_connection.id == connection_id:
+            self._latest_connection = None
         await self._connection_manager.disconnect(connection_id)
 
     async def send_to_latest(self, packet: Packet) -> None:

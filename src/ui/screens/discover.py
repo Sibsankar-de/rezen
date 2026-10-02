@@ -12,6 +12,7 @@ from protocol.protocol import RLP
 from services.connection_service import ConnectionService
 from services.device_service import DeviceService
 from services.discovery_service import DiscoveryService
+from services.screen_cast_service import ScreenCastService
 from utils.logger import get_logger
 from .connecting import ConnectingScreen
 from ..layout import BaseLayout
@@ -44,12 +45,14 @@ class DiscoverScreen(Screen):
         discovery_service: DiscoveryService,
         connection_service: Optional[ConnectionService] = None,
         device_service: Optional[DeviceService] = None,
+        screen_cast_service: Optional[ScreenCastService] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self._discovery_service = discovery_service
         self._connection_service = connection_service or container.connection_service
         self._device_service = device_service or container.device_service
+        self._screen_cast_service = screen_cast_service or container.screen_cast_service
         self._devices_cache: dict[str, tuple[Device, float]] = {}
         self._scan_timer = None
 
@@ -144,6 +147,7 @@ class DiscoverScreen(Screen):
                     device=event.item.device,
                     connection_service=self._connection_service,
                     device_service=self._device_service,
+                    screen_cast_service=self._screen_cast_service,
                 )
             )
 

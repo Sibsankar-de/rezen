@@ -17,23 +17,34 @@ class Streamer:
 
     def __init__(
         self,
-        capture: Optional[ScreenCapture],
-        encoder: Optional[H264Encoder],
+        capture: Optional[ScreenCapture] = None,
+        encoder: Optional[H264Encoder] = None,
         queue_size: int = settings.STREAM_QUEUE_MAX_SIZE,
     ):
-        self._capture = capture or ScreenCapture()
-        self._encoder = encoder or H264Encoder(
-            self._capture.width, self._capture.height
-        )
+        self._capture = capture
+        self._encoder = encoder
+        self._queue_size = queue_size
 
         self._frame_queue: asyncio.Queue[np.ndarray] = asyncio.Queue(maxsize=queue_size)
 
         self._running = False
 
-        self._capture_task: asyncio.Task
-        self._encode_task: asyncio.Task
+        self._capture_task: asyncio.Task | None = None
+        self._encode_task: asyncio.Task | None = None
 
         self._frame_index = 0
+
+    @property
+    def capture(self) -> ScreenCapture:
+        if self._capture is None:
+            self._capture = ScreenCapture()
+        return self._capture
+
+    @property
+    def encoder(self) -> H264Encoder:
+        if self._encoder is None:
+            self._encoder = H264Encoder(self.capture.width, self.capture.height)
+        return self._encoder
 
     async def start(self, send: Callable[[StreamChunk], Awaitable[None]]) -> None:
         """Starts the streamer and start producer consumer"""
@@ -44,10 +55,8 @@ class Streamer:
         self._running = True
         self._send = send
 
-        self._capture_task = asyncio.create_task(self._capture_loop)
-        self._encode_task = asyncio.create_task(self._encode_loop)
-
-        await asyncio.gather(self._capture_task, self._encode_task)
+        self._capture_task = asyncio.create_task(self._capture_loop())
+        self._encode_task = asyncio.create_task(self._encode_loop())
 
     async def stop(self) -> None:
         """Stop the streamer and cancel tasks"""
@@ -57,38 +66,66 @@ class Streamer:
 
         self._running = False
 
-        self._capture_task.cancel()
-        self._encode_task.cancel()
+        if self._capture_task is not None:
+            self._capture_task.cancel()
+        if self._encode_task is not None:
+            self._encode_task.cancel()
+
         await self._clear_queue()
 
-        await asyncio.gather(
-            self._capture_task, self._encode_task, return_exceptions=True
-        )
+        tasks = [t for t in (self._capture_task, self._encode_task) if t is not None]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        if self._capture is not None:
+            try:
+                self._capture.close()
+            except Exception:
+                pass
+            self._capture = None
+
+        if self._encoder is not None:
+            try:
+                self._encoder.close()
+            except Exception:
+                pass
+            self._encoder = None
 
     async def _capture_loop(self) -> None:
         """Captures the frames and push into queue"""
 
-        while self._running and not self._frame_queue.full():
-            frame = await asyncio.to_thread(self._capture.capture)
-
-            await self._frame_queue.put(frame)
+        while self._running:
+            try:
+                frame = await asyncio.to_thread(self.capture.capture)
+                await self._frame_queue.put(frame)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.error("Error in screen capture loop", exc_info=True)
+                break
 
     async def _encode_loop(self) -> None:
         """Consume queue and encode and send frames"""
 
-        while self._running and not self._frame_queue.empty():
-
+        while self._running:
             try:
                 frame = await self._frame_queue.get()
+            except asyncio.CancelledError:
+                break
 
+            try:
                 await self._encode_and_send_chunk(frame)
-
+            except asyncio.CancelledError:
+                self._frame_queue.task_done()
+                break
+            except Exception:
+                logger.error("Error in screen encode loop", exc_info=True)
             finally:
                 self._frame_queue.task_done()
 
     async def _encode_and_send_chunk(self, frame: np.ndarray):
         """Encode frame, create chunks and send chunks"""
-        packets = await asyncio.to_thread(self._encoder.encode, frame)
+        packets = await asyncio.to_thread(self.encoder.encode, frame)
 
         for packet in packets:
             chunks = self._create_chunks(packet.data, settings.STREAM_CHUNK_SIZE)
@@ -122,6 +159,9 @@ class Streamer:
 
     async def _clear_queue(self) -> None:
         """Removes all elements from the queue"""
-        while self._running and not self._frame_queue.empty():
-            await self._frame_queue.get_nowait()
-            self._frame_queue.task_done()
+        while not self._frame_queue.empty():
+            try:
+                self._frame_queue.get_nowait()
+                self._frame_queue.task_done()
+            except (asyncio.QueueEmpty, ValueError):
+                break

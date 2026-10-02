@@ -14,6 +14,11 @@ from services.connection_service import ConnectionService
 from services.device_service import DeviceService
 
 
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
 class ScreenCastService:
     """Service to handle screen casting"""
 
@@ -22,28 +27,45 @@ class ScreenCastService:
         connection_manager: ConnectionManager,
         connection_service: ConnectionService,
         device_service: DeviceService,
-        streamer: Optional[Streamer],
-        receiver: Optional[Receiver],
+        streamer: Optional[Streamer] = None,
+        receiver: Optional[Receiver] = None,
     ):
         self._connection_manager = connection_manager
         self._connection_service = connection_service
         self._device_service = device_service
 
-        self._streamer = streamer or Streamer()
-        self._receiver = receiver or Receiver()
+        self._streamer = streamer
+        self._receiver = receiver
+
+    @property
+    def streamer(self) -> Streamer:
+        if self._streamer is None:
+            self._streamer = Streamer()
+        return self._streamer
+
+    @property
+    def receiver(self) -> Receiver:
+        if self._receiver is None:
+            self._receiver = Receiver()
+        return self._receiver
 
     async def start_streaming(self) -> None:
         """Start streaming"""
-        await self._streamer.start(self._send_chunk)
+        logger.info("Starting screen cast streaming...")
+        await self.streamer.start(self._send_chunk)
 
     async def stop_streaming(self) -> None:
         """Stop and close streaming"""
-        await self._streamer.stop()
+        logger.info("Stopping screen cast streaming...")
+        if self._streamer is not None:
+            await self._streamer.stop()
+            self._streamer = None
 
     async def _send_chunk(self, chunk: StreamChunk) -> None:
         """Create packet and send stream chunk"""
         packet = Packet(
             type=PacketType.SCREEN_FRAME_CHUNK,
+            version="1.0",
             device_id=self._device_service.get_current_device().id,
             payload=chunk,
         )
@@ -52,13 +74,17 @@ class ScreenCastService:
 
     async def start_receiving(self) -> None:
         """Start receiver"""
-        await self._receiver.start()
+        logger.info("Starting screen cast receiving...")
+        await self.receiver.start()
         await self._connection_manager.subscribe(self._handle_stream_packet)
 
     async def stop_receiving(self) -> None:
         """Stop and clean receiver"""
+        logger.info("Stopping screen cast receiving...")
         await self._connection_manager.unsubscribe(self._handle_stream_packet)
-        await self._receiver.stop()
+        if self._receiver is not None:
+            await self._receiver.stop()
+            self._receiver = None
 
     async def _handle_stream_packet(
         self, connection: Connection, packet: Packet
@@ -73,4 +99,8 @@ class ScreenCastService:
         if not packet or not packet.payload:
             return
 
-        await self._receiver.handle_chunk(packet.payload)
+        payload = packet.payload
+        if isinstance(payload, dict):
+            payload = StreamChunk(**payload)
+
+        await self.receiver.handle_chunk(payload)

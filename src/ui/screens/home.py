@@ -45,6 +45,7 @@ class HomeScreen(Screen):
                     broadcast_service=container.broadcast_service(),
                     connection_service=container.connection_service,
                     device_service=container.device_service,
+                    screen_cast_service=container.screen_cast_service,
                 )
             )
         elif event.button.id == "btn-discover":
@@ -54,5 +55,6 @@ class HomeScreen(Screen):
                     discovery_service=container.discovery_service(),
                     connection_service=container.connection_service,
                     device_service=container.device_service,
+                    screen_cast_service=container.screen_cast_service,
                 )
             )

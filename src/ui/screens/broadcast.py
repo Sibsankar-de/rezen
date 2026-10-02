@@ -10,6 +10,7 @@ from models.device import Device
 from services.broadcast_service import BroadcastService
 from services.connection_service import ConnectionService
 from services.device_service import DeviceService
+from services.screen_cast_service import ScreenCastService
 from utils.logger import get_logger
 from .connected import ConnectedScreen
 from ..layout import BaseLayout
@@ -42,12 +43,14 @@ class BroadcastScreen(Screen):
         broadcast_service: BroadcastService,
         connection_service: ConnectionService,
         device_service: Optional[DeviceService] = None,
+        screen_cast_service: Optional[ScreenCastService] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self._broadcast_service = broadcast_service
         self._connection_service = connection_service
         self._device_service = device_service or container.device_service
+        self._screen_cast_service = screen_cast_service or container.screen_cast_service
         self._pending_requests: dict[str, Device] = {}
 
     def compose(self) -> ComposeResult:
@@ -139,12 +142,17 @@ class BroadcastScreen(Screen):
             self._set_status(
                 f"✅ Connected to {device.name} (connection id: {connection.id})"
             )
+            logger.info("Starting screen cast streaming as broadcaster...")
+            await self._screen_cast_service.start_streaming()
+
             self.app.push_screen(
                 ConnectedScreen(
                     device=device,
                     connection=connection,
                     connection_service=self._connection_service,
                     device_service=self._device_service,
+                    screen_cast_service=self._screen_cast_service,
+                    is_streamer=True,
                 )
             )
         except Exception as exc:
