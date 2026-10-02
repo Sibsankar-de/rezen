@@ -20,6 +20,8 @@ class Container:
     def __init__(self) -> None:
         self._device_service: DeviceService | None = None
         self._broadcaster: Broadcaster | None = None
+        self._broadcast_service: BroadcastService | None = None
+        self._discovery_service: DiscoveryService | None = None
         self._connection_manager: ConnectionManager | None = None
         self._connection_service: ConnectionService | None = None
         self._screen_cast_service: ScreenCastService | None = None
@@ -41,6 +43,12 @@ class Container:
         if self._connection_manager is not None:
             await self._connection_manager.stop()
             self._connection_manager = None
+        if self._broadcast_service is not None:
+            await self._broadcast_service.stop_private_broadcast()
+            self._broadcast_service = None
+        if self._discovery_service is not None:
+            await self._discovery_service.stop_discovery()
+            self._discovery_service = None
         if self._broadcaster is not None:
             await self._broadcaster.stop()
             self._broadcaster = None
@@ -98,24 +106,26 @@ class Container:
 
     def broadcast_service(self, interval: float = 2.0) -> BroadcastService:
         """
-        Create a fresh BroadcastService backed by the shared Broadcaster.
-        Each BroadcastScreen gets its own instance so start/stop are isolated.
+        Get or create BroadcastService backed by the shared Broadcaster.
         """
-        return BroadcastService(
-            broadcaster=self.broadcaster,
-            device_service=self.device_service,
-            interval=interval,
-        )
+        if self._broadcast_service is None:
+            self._broadcast_service = BroadcastService(
+                broadcaster=self.broadcaster,
+                device_service=self.device_service,
+                interval=interval,
+            )
+        return self._broadcast_service
 
     def discovery_service(self) -> DiscoveryService:
         """
-        Create a fresh DiscoveryService backed by the shared Broadcaster.
-        Each DiscoverScreen gets its own instance so start/stop are isolated.
+        Get or create DiscoveryService backed by the shared Broadcaster.
         """
-        return DiscoveryService(
-            broadcaster=self.broadcaster,
-            device_service=self.device_service,
-        )
+        if self._discovery_service is None:
+            self._discovery_service = DiscoveryService(
+                broadcaster=self.broadcaster,
+                device_service=self.device_service,
+            )
+        return self._discovery_service
 
 
 container = Container()

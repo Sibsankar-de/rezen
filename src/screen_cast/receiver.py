@@ -129,4 +129,5 @@ class Receiver:
             logger.error(f"Error decoding or rendering chunk: {exc}", exc_info=True)
 
         if self.renderer.isClosed:
+            logger.info("ScreenRenderer is closed, stopping Receiver.")
             await self.stop()

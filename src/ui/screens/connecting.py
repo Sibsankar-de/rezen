@@ -11,6 +11,7 @@ from models.device import Device
 from models.connection import Connection, ConnectionState
 from services.connection_service import ConnectionService
 from services.device_service import DeviceService
+from services.discovery_service import DiscoveryService
 from services.screen_cast_service import ScreenCastService
 from utils.logger import get_logger
 from .connected import ConnectedScreen
@@ -25,6 +26,7 @@ class ConnectingScreen(Screen):
     def __init__(
         self,
         device: Device,
+        discovery_service: Optional[DiscoveryService] = None,
         connection_service: Optional[ConnectionService] = None,
         device_service: Optional[DeviceService] = None,
         screen_cast_service: Optional[ScreenCastService] = None,
@@ -32,6 +34,7 @@ class ConnectingScreen(Screen):
     ):
         super().__init__(**kwargs)
         self._device = device
+        self._discovery_service = discovery_service
         self._connection_service = connection_service or container.connection_service
         self._device_service = device_service or container.device_service
         self._screen_cast_service = screen_cast_service or container.screen_cast_service
@@ -89,6 +92,15 @@ class ConnectingScreen(Screen):
                 logger.info(f"Connected to {self._device.name} successfully (id: {connection.id}).")
                 self._set_status(f"✅ Connected to {self._device.name}!")
                 self._show_connected()
+
+                # Stop discovery now that connection is established
+                ds = self._discovery_service or container.discovery_service()
+                if ds is not None:
+                    try:
+                        logger.info("Stopping discovery upon successful connection.")
+                        await ds.stop_discovery()
+                    except Exception as exc:
+                        logger.warning(f"Error stopping discovery: {exc}")
 
                 # The device which discovered will be the receiver:
                 logger.info("Starting screen cast receiving as discovered receiver...")

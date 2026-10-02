@@ -132,6 +132,17 @@ class BroadcastScreen(Screen):
             self._refresh_request_list()
             self._accept_connection(device)
 
+    async def on_screen_resume(self) -> None:
+        """Resume broadcasting if returning to this screen after disconnect."""
+        logger.info("BroadcastScreen resumed, restarting presence broadcast.")
+        try:
+            await self._broadcast_service.start_private_broadcast(
+                on_connection_request=self._on_connection_request
+            )
+            await self._broadcast_service.broadcast()
+        except Exception:
+            logger.error("Failed to resume broadcast service.", exc_info=True)
+
     @work(exclusive=False, thread=False)
     async def _accept_connection(self, device: Device) -> None:
         """Accept the incoming connection request asynchronously."""
@@ -143,6 +154,14 @@ class BroadcastScreen(Screen):
             self._set_status(
                 f"✅ Connected to {device.name} (connection id: {connection.id})"
             )
+
+            # Stop presence broadcast immediately once connection is established
+            logger.info("Stopping presence broadcast upon active connection.")
+            try:
+                await self._broadcast_service.stop_private_broadcast()
+            except Exception as exc:
+                logger.warning(f"Error stopping private broadcast on connection: {exc}")
+
             logger.info("Starting screen cast streaming as broadcaster...")
             try:
                 await asyncio.wait_for(

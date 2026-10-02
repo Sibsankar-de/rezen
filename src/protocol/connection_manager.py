@@ -353,7 +353,7 @@ class ConnectionManager:
 
     async def send(self, connection_id: str, packet: Packet) -> None:
         """Send a packet in a connection"""
-        connection = self._connections.get(connection_id, None)
+        connection = self.get_connection(connection_id)
         if connection is None:
             raise ConnectionError(f"Connection not found: {connection_id}")
 

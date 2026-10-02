@@ -77,7 +77,15 @@ async def test_connecting_screen_shows_connected_successfully():
     scs.start_receiving = AsyncMock()
     scs.stop_receiving = AsyncMock()
 
-    screen = ConnectingScreen(device=dev, connection_service=cs, screen_cast_service=scs)
+    ds = MagicMock()
+    ds.stop_discovery = AsyncMock()
+
+    screen = ConnectingScreen(
+        device=dev,
+        discovery_service=ds,
+        connection_service=cs,
+        screen_cast_service=scs,
+    )
     app = MockApp(screen)
     async with app.run_test() as pilot:
         await pilot.pause()
@@ -88,6 +96,7 @@ async def test_connecting_screen_shows_connected_successfully():
         assert isinstance(pilot.app.screen, ConnectedScreen)
         assert "Connected to Remote Box" in str(pilot.app.screen.query_one("#connected-subtitle").content)
         scs.start_receiving.assert_awaited_once()
+        ds.stop_discovery.assert_awaited_once()
 
         # Check Disconnect button
         btn = pilot.app.screen.query_one("#btn-disconnect", Button)
@@ -195,6 +204,7 @@ async def test_broadcast_screen_transitions_to_connected_screen():
         assert isinstance(pilot.app.screen, ConnectedScreen)
         assert pilot.app.screen.query_one("#btn-disconnect") is not None
         scs.start_streaming.assert_awaited_once()
+        bs.stop_private_broadcast.assert_awaited_once()
 
 
 

@@ -83,11 +83,17 @@ class ScreenCastService:
     async def _handle_stream_packet(
         self, connection: Connection, packet: Packet
     ) -> None:
-        """Handle incoming stream packets"""
-        if (
-            not self._connection_service.latest_connection
-            or self._connection_service.latest_connection.id != connection.id
-        ):
+        latest = self._connection_service.latest_connection
+        if not latest:
+            logger.debug("Received stream packet but no active latest_connection.")
+            return
+
+        conn_dev_id = getattr(connection, "device_id", None)
+        latest_dev_id = getattr(latest, "device_id", None)
+        if latest.id != connection.id and (not conn_dev_id or conn_dev_id != latest_dev_id):
+            logger.debug(
+                f"Ignoring packet from {connection.id}: does not match latest connection {latest.id}"
+            )
             return
 
         if not packet or packet.type != PacketType.SCREEN_FRAME_CHUNK or not packet.payload:

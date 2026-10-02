@@ -139,12 +139,21 @@ class DiscoverScreen(Screen):
         """Manual refresh trigger."""
         self._prune_expired_devices()
 
+    async def on_screen_resume(self) -> None:
+        """Resume continuous discovery if returning to this screen."""
+        logger.info("DiscoverScreen resumed, ensuring discovery is active.")
+        try:
+            await self._discovery_service.start_discovery(self._on_device_discovered)
+        except Exception:
+            logger.error("Failed to resume discovery service.", exc_info=True)
+
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         """Open ConnectingScreen when the user clicks a discovered device."""
         if isinstance(event.item, DeviceListItem):
             self.app.push_screen(
                 ConnectingScreen(
                     device=event.item.device,
+                    discovery_service=self._discovery_service,
                     connection_service=self._connection_service,
                     device_service=self._device_service,
                     screen_cast_service=self._screen_cast_service,

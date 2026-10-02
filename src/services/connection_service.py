@@ -73,7 +73,9 @@ class ConnectionService:
 
         self._broadcaster.send(accept_packet, (from_device.ip, from_device.port))
 
-        return await self._establish_connection(from_device)
+        connection = await self._establish_connection(from_device)
+        await self.complete_connection(connection)
+        return connection
 
     async def _establish_connection(self, remote_device: Device) -> Connection:
         """Creates a new long lived connection"""
@@ -153,6 +155,7 @@ class ConnectionService:
     async def send_to_latest(self, packet: Packet) -> None:
         """Send packet to latest connection"""
         if not self._latest_connection:
+            logger.warning("Cannot send packet: no active connection.")
             return
 
         await self._connection_manager.send(

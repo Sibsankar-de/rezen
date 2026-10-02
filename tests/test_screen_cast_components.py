@@ -230,6 +230,15 @@ def test_screen_renderer_lifecycle():
         assert renderer.isClosed is True
 
 
+def test_screen_renderer_is_window_open():
+    renderer = ScreenRenderer()
+    with patch("cv2.getWindowProperty", return_value=1.0):
+        assert renderer._is_window_open() is True
+
+    with patch("cv2.getWindowProperty", side_effect=Exception("Null pointer")):
+        assert renderer._is_window_open() is False
+
+
 def test_screen_capture_safe_fallback():
     from screen_cast.capture import ScreenCapture
 
