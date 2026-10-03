@@ -1,8 +1,27 @@
 from dataclasses import dataclass
 from fractions import Fraction
+from typing import Any
 
-import av
 import numpy as np
+
+av: Any = None
+
+
+def _av() -> Any:
+    """Import PyAV lazily and cache the module.
+
+    PyAV bundles its own FFmpeg shared libraries. When they are loaded into the
+    same process as OpenCV's HighGUI, ``cv2.namedWindow`` spins forever at 100%
+    CPU and never creates a window. The ScreenRenderer runs in a spawned child
+    process that re-imports the application modules, so PyAV must stay out of
+    that process until a codec is actually needed.
+    """
+    global av
+    if av is None:
+        import av as av_module
+
+        av = av_module
+    return av
 
 
 @dataclass(slots=True)
@@ -33,7 +52,7 @@ class H264Encoder:
         self._closed = False
         self._pts = 0
 
-        self._codec = av.CodecContext.create("libx264", "w")
+        self._codec = _av().CodecContext.create("libx264", "w")
 
         self._codec.width = self.width
         self._codec.height = self.height
@@ -68,7 +87,7 @@ class H264Encoder:
         if not frame.flags["C_CONTIGUOUS"]:
             frame = np.ascontiguousarray(frame)
 
-        video_frame = av.VideoFrame.from_ndarray(
+        video_frame = _av().VideoFrame.from_ndarray(
             frame,
             format="bgra",
         )
@@ -130,7 +149,7 @@ class H264Decoder:
     def __init__(self) -> None:
         self._closed = False
 
-        self._codec = av.CodecContext.create(
+        self._codec = _av().CodecContext.create(
             "h264",
             "r",
         )
@@ -147,7 +166,7 @@ class H264Decoder:
             return []
 
         try:
-            packet = av.Packet(data)
+            packet = _av().Packet(data)
             frames = self._codec.decode(packet)
             return [frame.to_ndarray(format="bgr24") for frame in frames]
         except Exception:
