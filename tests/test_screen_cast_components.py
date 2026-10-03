@@ -1,4 +1,5 @@
 import sys
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -10,6 +11,7 @@ if str(src_dir) not in sys.path:
     sys.path.insert(0, str(src_dir))
 
 from models.stream_chunk import ChunkType, FlagType, StreamChunk
+from settings import settings
 from screen_cast.h264 import H264Decoder, H264Encoder
 from screen_cast.receiver import FrameBuffer, Receiver, _chunk_sort_key
 from screen_cast.renderer import ScreenRenderer
@@ -273,11 +275,11 @@ def test_screen_capture_single_monitor_odd_dimensions():
         cap.close()
 
 
-def test_screen_capture_rejects_black_frames():
-    """A blank grab means the backend could not read the framebuffer (Wayland/X11)."""
+def test_screen_capture_warns_but_streams_on_black_frames():
+    """A blank grab must not kill the stream: it warns and keeps returning frames."""
     import numpy as np
 
-    from screen_cast.capture import ScreenCapture, ScreenCaptureError
+    from screen_cast.capture import ScreenCapture
 
     mock_sct = MagicMock()
     mock_sct.monitors = [
@@ -287,30 +289,33 @@ def test_screen_capture_rejects_black_frames():
 
     with patch("mss.MSS", return_value=mock_sct):
         cap = ScreenCapture(monitor=1)
-        for _ in range(cap.BLANK_FRAME_WARN_THRESHOLD - 1):
+        blank_count = cap.BLANK_FRAME_WARN_THRESHOLD * 3
+        for i in range(blank_count):
             assert cap.capture().max() == 0
-        with pytest.raises(ScreenCaptureError):
-            cap.capture()
+        assert cap._warned_blank is True
+        # A real frame must reset the warning state.
+        mock_sct.grab.return_value = np.full((64, 64, 4), 7, dtype=np.uint8)
+        assert cap.capture().max() == 7
+        assert cap._blank_frames == 0
+        assert cap._warned_blank is False
         cap.close()
 
 
-def test_screen_capture_accepts_real_frames():
+def test_screen_capture_raises_on_empty_frame():
     import numpy as np
 
-    from screen_cast.capture import ScreenCapture
+    from screen_cast.capture import ScreenCapture, ScreenCaptureError
 
     mock_sct = MagicMock()
     mock_sct.monitors = [
         {"top": 0, "left": 0, "width": 64, "height": 64, "is_primary": True},
     ]
-    frame = np.zeros((64, 64, 4), dtype=np.uint8)
-    frame[0, 0] = 255
-    mock_sct.grab.return_value = frame
+    mock_sct.grab.return_value = np.zeros((0, 0, 4), dtype=np.uint8)
 
     with patch("mss.MSS", return_value=mock_sct):
         cap = ScreenCapture(monitor=1)
-        for _ in range(cap.BLANK_FRAME_WARN_THRESHOLD + 5):
-            assert cap.capture().max() == 255
+        with pytest.raises(ScreenCaptureError):
+            cap.capture()
         cap.close()
 
 
@@ -333,3 +338,80 @@ def test_multiprocessing_fix_filters_invalid_fds():
         mp_util.spawnv_passfds("cmd", [], [-1, 3, 4, -99])
         assert recorded_passfds == [3, 4]
 
+
+
+def test_create_capture_prefers_mss_on_x11():
+    """X11 sessions must not go through the Wayland portal path."""
+    from screen_cast import capture as capture_module
+    from screen_cast.capture import ScreenCapture, create_capture
+
+    with patch.dict(os.environ, {"XDG_SESSION_TYPE": "x11"}, clear=False):
+        assert capture_module.create_capture() is not None
+        # The real ScreenCapture is returned without touching the portal.
+        instance = create_capture()
+        assert isinstance(instance, ScreenCapture)
+        instance.close()
+
+
+def test_create_capture_honours_explicit_mss_backend():
+    """SCREEN_CAPTURE_BACKEND=mss must skip the portal even on Wayland."""
+    from screen_cast.capture import ScreenCapture, create_capture
+
+    previous = settings.SCREEN_CAPTURE_BACKEND
+    settings.SCREEN_CAPTURE_BACKEND = "mss"
+    try:
+        with patch.dict(os.environ, {"XDG_SESSION_TYPE": "wayland"}, clear=False):
+            instance = create_capture()
+            assert isinstance(instance, ScreenCapture)
+            instance.close()
+    finally:
+        settings.SCREEN_CAPTURE_BACKEND = previous
+
+
+def test_pipewire_scaled_size_keeps_aspect_and_even_edges():
+    from screen_cast.pipewire_capture import PipeWireScreenCapture
+
+    scale = PipeWireScreenCapture._scaled_size
+
+    assert scale(1920, 1080, 1920, 1080) == (1920, 1080)
+    assert scale(1920, 1080, 1280, 720) == (1280, 720)
+    assert scale(1280, 720, 1920, 1080) == (1280, 720)
+    # Odd source sizes are floored to even edges for the encoder.
+    width, height = scale(1365, 767, 1920, 1080)
+    assert width % 2 == 0 and height % 2 == 0
+    assert width <= 1365 and height <= 767
+
+
+def test_portal_available_requires_wayland_session():
+    from screen_cast import pipewire_capture
+
+    with patch.dict(os.environ, {"XDG_SESSION_TYPE": "x11"}, clear=False):
+        assert pipewire_capture.portal_available() is False
+
+    with patch.dict(
+        os.environ, {"XDG_SESSION_TYPE": "wayland", "XDG_RUNTIME_DIR": ""}, clear=False
+    ):
+        assert pipewire_capture.portal_available() is False
+
+
+def test_pipewire_requires_gstreamer():
+    from screen_cast.pipewire_capture import PipeWireScreenCapture, PipeWireUnavailable
+
+    with patch("shutil.which", return_value=None):
+        with pytest.raises(PipeWireUnavailable):
+            PipeWireScreenCapture()
+
+
+def test_pipewire_requires_system_python_with_bindings():
+    from screen_cast.pipewire_capture import (
+        PipeWireScreenCapture,
+        PipeWireUnavailable,
+        find_system_python,
+    )
+
+    with patch("shutil.which", return_value="/usr/bin/gst-launch-1.0"):
+        with patch("screen_cast.pipewire_capture.find_system_python", return_value=None):
+            with pytest.raises(PipeWireUnavailable):
+                PipeWireScreenCapture()
+
+    assert callable(find_system_python)

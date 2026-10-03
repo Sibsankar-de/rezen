@@ -66,19 +66,16 @@ class ConnectedScreen(Screen):
         self._health_timer = self.set_interval(2.0, self._check_health)
 
     def _check_health(self) -> None:
-        """Surface streamer failures (e.g. an unreadable framebuffer) in the UI."""
+        """Surface streamer capture problems (e.g. an unreadable framebuffer)."""
         if self._stopped or not self._is_streamer:
             return
 
-        streamer = self._screen_cast_service.streamer
-        error = streamer.capture_error
-        if error is None:
+        warning = self._screen_cast_service.streamer.capture_warning
+        if warning is None:
             return
 
         try:
-            self.query_one("#connected-status", Label).update(
-                f"Status: Capture failed - {error}"
-            )
+            self.query_one("#connected-status", Label).update(f"Status: {warning}")
         except Exception:
             pass
 

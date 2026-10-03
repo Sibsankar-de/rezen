@@ -4,7 +4,7 @@ from typing import Optional, Callable, Awaitable, Any
 
 import numpy as np
 
-from screen_cast.capture import ScreenCapture
+from screen_cast.capture import FrameSource, create_capture
 from screen_cast.h264 import H264Encoder
 from models.stream_chunk import StreamChunk, ChunkType, FlagType
 
@@ -22,7 +22,7 @@ class Streamer:
 
     def __init__(
         self,
-        capture: Optional[ScreenCapture] = None,
+        capture: Optional[FrameSource] = None,
         encoder: Optional[H264Encoder] = None,
         queue_size: int = settings.STREAM_QUEUE_MAX_SIZE,
     ):
@@ -51,9 +51,21 @@ class Streamer:
         return self._capture_error
 
     @property
-    def capture(self) -> ScreenCapture:
+    def capture_warning(self) -> str | None:
+        """Non-fatal capture health hint, e.g. a backend stuck on black frames."""
+        if self._capture_error is not None:
+            return str(self._capture_error)
         if self._capture is None:
-            self._capture = ScreenCapture()
+            return None
+        try:
+            return self._capture.warning
+        except Exception:
+            return None
+
+    @property
+    def capture(self) -> FrameSource:
+        if self._capture is None:
+            self._capture = create_capture(target_fps=TARGET_FPS)
         return self._capture
 
     @property

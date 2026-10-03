@@ -13,5 +13,10 @@ class Settings(BaseSettings):
 
     SCREEN_RENDER_WINDOW_NAME: str = "Rezen - Remote screen"
 
+    # Capture backend: "auto" prefers the Wayland portal when available.
+    SCREEN_CAPTURE_BACKEND: str = "auto"
+    SCREEN_CAPTURE_MAX_WIDTH: int = 1280
+    SCREEN_CAPTURE_MAX_HEIGHT: int = 720
+
 
 settings = Settings()
