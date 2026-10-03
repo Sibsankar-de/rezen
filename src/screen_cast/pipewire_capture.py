@@ -32,6 +32,79 @@ FRAME_WAIT_SECONDS = 0.05
 #: Frame rate requested from the compositor before scaling.
 TARGET_FPS = 30
 
+#: Media classes that identify a screen/compositor video output.
+SCREEN_MEDIA_CLASSES = ("Stream/Output/Video", "Video/Screen")
+
+#: Node names used by common Wayland compositors, preferred when several
+#: applications expose a screen-class video node.
+COMPOSITOR_NAME_HINTS = (
+    "gnome-shell",
+    "kwin_wayland",
+    "mutter",
+    "wlroots",
+    "sway",
+    "weston",
+    "wayfire",
+    "hyprland",
+    "niri",
+    "cage",
+    "labwc",
+    "swaylock",
+)
+
+
+def discover_screen_node() -> str | None:
+    """Return the name of the compositor's screen video node.
+
+    Binding the pipeline to this node rather than letting PipeWire autoconnect
+    keeps the capture pinned to the screen.
+    """
+    try:
+        dumped = subprocess.run(
+            ["pw-dump"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning(f"Could not inspect PipeWire for the screen node: {exc}")
+        return None
+
+    if dumped.returncode != 0:
+        logger.warning("pw-dump failed; falling back to automatic PipeWire binding.")
+        return None
+
+    try:
+        objects = json.loads(dumped.stdout)
+    except ValueError as exc:
+        logger.warning(f"Could not parse pw-dump output: {exc}")
+        return None
+
+    candidates: list[str] = []
+    for obj in objects:
+        if obj.get("type") != "PipeWire:Interface:Node":
+            continue
+        props = obj.get("info", {}).get("props", {})
+        if props.get("media.class") not in SCREEN_MEDIA_CLASSES:
+            continue
+        name = props.get("node.name")
+        if not name:
+            continue
+        if any(hint in str(name).lower() for hint in COMPOSITOR_NAME_HINTS):
+            return str(name)
+        candidates.append(str(name))
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    if candidates:
+        logger.warning(
+            f"Multiple screen-class video nodes found ({candidates}); using "
+            "automatic PipeWire binding."
+        )
+    return None
+
 
 class PipeWireUnavailable(RuntimeError):
     """The Wayland portal/PipeWire capture path cannot be used here."""
@@ -115,7 +188,20 @@ class PipeWireScreenCapture:
         self._reader_error: str | None = None
         self._closed = False
 
-        self._source_width, self._source_height = self._request_stream()
+        self._node_id, self._source_width, self._source_height = self._request_stream()
+
+        # Pin the capture to the compositor's screen node. Falls back to
+        # PipeWire autoconnect if it cannot be identified.
+        self._screen_node = discover_screen_node()
+        if self._screen_node:
+            logger.info(
+                f"Screen capture will bind to PipeWire node '{self._screen_node}'."
+            )
+        else:
+            logger.warning(
+                "Could not identify the compositor's screen node; letting "
+                "PipeWire bind automatically."
+            )
         self._width, self._height = self._scaled_size(
             self._source_width, self._source_height, max_width, max_height
         )
@@ -123,22 +209,21 @@ class PipeWireScreenCapture:
 
         logger.info(
             f"PipeWire capture negotiated {self._width}x{self._height} from a "
-            f"{self._source_width}x{self._source_height} portal stream."
+            f"{self._source_width}x{self._source_height} portal screen stream "
+            f"(portal node {self._node_id})."
         )
 
         self._start_pipeline()
 
     @staticmethod
-    def _scaled_size(
-        src_w: int, src_h: int, max_w: int, max_h: int
-    ) -> tuple[int, int]:
+    def _scaled_size(src_w: int, src_h: int, max_w: int, max_h: int) -> tuple[int, int]:
         """Fit the source inside the cap, keeping aspect ratio and even edges."""
         scale = min(max_w / src_w, max_h / src_h, 1.0)
         width = max(2, int(src_w * scale) // 2 * 2)
         height = max(2, int(src_h * scale) // 2 * 2)
         return width, height
 
-    def _request_stream(self) -> tuple[int, int]:
+    def _request_stream(self) -> tuple[int, int, int]:
         """Ask the portal for a monitor stream, waiting for user consent."""
         logger.info(
             "Requesting a screen-share stream from the XDG Desktop Portal. "
@@ -189,7 +274,11 @@ class PipeWireScreenCapture:
                     f"Screen-share consent granted; PipeWire node "
                     f"{message.get('node_id')} is streaming."
                 )
-                return int(message["width"]), int(message["height"])
+                return (
+                    int(message["node_id"]),
+                    int(message["width"]),
+                    int(message["height"]),
+                )
 
             if message.get("error"):
                 self.close()
@@ -203,15 +292,10 @@ class PipeWireScreenCapture:
             self._gst_launch,
             "-q",
             "pipewiresrc",
+            # Pin the capture to the compositor's screen node.
+            *([f"target-object={self._screen_node}"] if self._screen_node else []),
             "!",
             "videoconvert",
-            "!",
-            # The compositor delivers at the display refresh rate. Drop the extra
-            # frames before the expensive scale so conversion only runs for the
-            # frames that are actually streamed.
-            "videorate",
-            "drop-only=true",
-            f"max-rate={self._target_fps}",
             "!",
             "videoscale",
             "method=nearest-neighbour",
@@ -224,7 +308,8 @@ class PipeWireScreenCapture:
             self._gst = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+                # Surface pipeline failures when GST_DEBUG is set.
+                stderr=None if os.environ.get("GST_DEBUG") else subprocess.DEVNULL,
                 # Buffered so read1() can hand back partial frames without
                 # blocking for a whole one.
                 bufsize=-1,
@@ -311,9 +396,7 @@ class PipeWireScreenCapture:
         # Nothing seen yet: block until the stream produces its first frame.
         first_deadline = time.monotonic() + FIRST_FRAME_TIMEOUT_SECONDS
         while self._last_frame is None:
-            frame = self._take_new_frame(
-                max(0.0, first_deadline - time.monotonic())
-            )
+            frame = self._take_new_frame(max(0.0, first_deadline - time.monotonic()))
             if frame is not None:
                 self._last_frame = frame
                 return frame
