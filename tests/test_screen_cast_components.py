@@ -247,7 +247,7 @@ def test_screen_capture_safe_fallback():
         {"top": 0, "left": 0, "width": 1921, "height": 1081},
         {"top": 0, "left": 0, "width": 1920, "height": 1080},
     ]
-    with patch("mss.mss", return_value=mock_sct):
+    with patch("mss.MSS", return_value=mock_sct):
         cap = ScreenCapture(monitor=1)
         assert cap.width == 1920
         assert cap.height == 1080
@@ -266,10 +266,51 @@ def test_screen_capture_single_monitor_odd_dimensions():
     mock_sct.monitors = [
         {"top": 0, "left": 0, "width": 1365, "height": 767},
     ]
-    with patch("mss.mss", return_value=mock_sct):
+    with patch("mss.MSS", return_value=mock_sct):
         cap = ScreenCapture(monitor=1)
         assert cap.width == 1364
         assert cap.height == 766
+        cap.close()
+
+
+def test_screen_capture_rejects_black_frames():
+    """A blank grab means the backend could not read the framebuffer (Wayland/X11)."""
+    import numpy as np
+
+    from screen_cast.capture import ScreenCapture, ScreenCaptureError
+
+    mock_sct = MagicMock()
+    mock_sct.monitors = [
+        {"top": 0, "left": 0, "width": 64, "height": 64, "is_primary": True},
+    ]
+    mock_sct.grab.return_value = np.zeros((64, 64, 4), dtype=np.uint8)
+
+    with patch("mss.MSS", return_value=mock_sct):
+        cap = ScreenCapture(monitor=1)
+        for _ in range(cap.BLANK_FRAME_WARN_THRESHOLD - 1):
+            assert cap.capture().max() == 0
+        with pytest.raises(ScreenCaptureError):
+            cap.capture()
+        cap.close()
+
+
+def test_screen_capture_accepts_real_frames():
+    import numpy as np
+
+    from screen_cast.capture import ScreenCapture
+
+    mock_sct = MagicMock()
+    mock_sct.monitors = [
+        {"top": 0, "left": 0, "width": 64, "height": 64, "is_primary": True},
+    ]
+    frame = np.zeros((64, 64, 4), dtype=np.uint8)
+    frame[0, 0] = 255
+    mock_sct.grab.return_value = frame
+
+    with patch("mss.MSS", return_value=mock_sct):
+        cap = ScreenCapture(monitor=1)
+        for _ in range(cap.BLANK_FRAME_WARN_THRESHOLD + 5):
+            assert cap.capture().max() == 255
         cap.close()
 
 

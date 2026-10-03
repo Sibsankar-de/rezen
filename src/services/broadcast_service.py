@@ -39,24 +39,34 @@ class BroadcastService:
         self, on_connection_request: Optional[Callable[[Device], None]] = None
     ) -> None:
         """Start continuous presence packet broadcasting every `self.interval` seconds."""
-        self._on_connection_request = on_connection_request
+        if on_connection_request is not None:
+            self._on_connection_request = on_connection_request
+
+        self._broadcaster.subscribe(self._handle_request_packets)
+
+        if self._broadcast_task is not None and not self._broadcast_task.done():
+            logger.info(
+                f"BroadcastService already broadcasting on port {self.port}; "
+                "reusing the running loop."
+            )
+            return
 
         self._broadcast_task = asyncio.create_task(self._periodic_broadcast_loop())
 
-        self._broadcaster.subscribe(self._handle_request_packets)
         logger.info(
             f"BroadcastService started on port {self.port} with {self.interval}s interval."
         )
 
     async def stop_private_broadcast(self) -> None:
         """Stop continuous broadcasting loop and unsubscribe."""
-        if self._broadcast_task is not None:
-            self._broadcast_task.cancel()
+        task = self._broadcast_task
+        self._broadcast_task = None
+        if task is not None:
+            task.cancel()
             try:
-                await self._broadcast_task
+                await task
             except asyncio.CancelledError:
                 pass
-            self._broadcast_task = None
 
         self._broadcaster.unsubscribe(self._handle_request_packets)
         logger.info("BroadcastService stopped")

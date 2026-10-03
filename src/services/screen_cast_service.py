@@ -31,6 +31,10 @@ class ScreenCastService:
         self._streamer = streamer
         self._receiver = receiver
 
+        self._sent_chunks = 0
+        self._sent_bytes = 0
+        self._received_packets = 0
+
     @property
     def streamer(self) -> Streamer:
         if self._streamer is None:
@@ -64,6 +68,19 @@ class ScreenCastService:
             payload=chunk,
         )
 
+        self._sent_chunks += 1
+        self._sent_bytes += len(chunk.data or b"")
+        if self._sent_chunks == 1:
+            logger.info(
+                f"Sending first stream chunk: frame={chunk.frame_id} "
+                f"chunk={chunk.chunk_id} size={chunk.size} total={chunk.total_chunks}."
+            )
+        if self._sent_chunks % 100 == 0:
+            logger.info(
+                f"Sent {self._sent_chunks} stream chunk(s) totalling "
+                f"{self._sent_bytes} bytes."
+            )
+
         await self._connection_service.send_to_latest(packet)
 
     async def start_receiving(self) -> None:
@@ -71,6 +88,10 @@ class ScreenCastService:
         logger.info("Starting screen cast receiving...")
         await self.receiver.start()
         await self._connection_manager.subscribe(self._handle_stream_packet)
+        logger.info(
+            f"Screen cast receiving is live; subscribed to stream packets "
+            f"({self._connection_manager.get_connection_count()} active connection(s))."
+        )
 
     async def stop_receiving(self) -> None:
         """Stop and clean receiver"""
@@ -98,6 +119,15 @@ class ScreenCastService:
 
         if not packet or packet.type != PacketType.SCREEN_FRAME_CHUNK or not packet.payload:
             return
+
+        self._received_packets += 1
+        if self._received_packets == 1:
+            logger.info(
+                f"First stream packet received on connection {connection.id} "
+                f"from device {conn_dev_id}."
+            )
+        if self._received_packets % 100 == 0:
+            logger.info(f"Received {self._received_packets} stream packet(s).")
 
         payload = packet.payload
         if isinstance(payload, dict):

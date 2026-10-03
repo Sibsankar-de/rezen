@@ -2,6 +2,7 @@ from typing import Optional
 from textual.app import ComposeResult
 from textual.containers import Center, Middle, Vertical
 from textual.screen import Screen
+from textual.timer import Timer
 from textual.widgets import Button, Label
 
 from container import container
@@ -37,6 +38,7 @@ class ConnectedScreen(Screen):
         self._screen_cast_service = screen_cast_service or container.screen_cast_service
         self._is_streamer = is_streamer
         self._stopped = False
+        self._health_timer: Timer | None = None
 
     def compose(self) -> ComposeResult:
         with BaseLayout():
@@ -58,6 +60,27 @@ class ConnectedScreen(Screen):
                             id="connected-status",
                         )
                         yield Button("Disconnect", id="btn-disconnect", variant="error")
+
+    def on_mount(self) -> None:
+        """Poll the streaming pipeline health while connected."""
+        self._health_timer = self.set_interval(2.0, self._check_health)
+
+    def _check_health(self) -> None:
+        """Surface streamer failures (e.g. an unreadable framebuffer) in the UI."""
+        if self._stopped or not self._is_streamer:
+            return
+
+        streamer = self._screen_cast_service.streamer
+        error = streamer.capture_error
+        if error is None:
+            return
+
+        try:
+            self.query_one("#connected-status", Label).update(
+                f"Status: Capture failed - {error}"
+            )
+        except Exception:
+            pass
 
     async def _stop_screen_cast(self) -> None:
         """Stop streaming or receiving if not already stopped."""

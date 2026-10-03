@@ -1,6 +1,8 @@
 import asyncio
-import numpy as np
+import time
 from typing import Optional, Callable, Awaitable, Any
+
+import numpy as np
 
 from screen_cast.capture import ScreenCapture
 from screen_cast.h264 import H264Encoder
@@ -10,6 +12,9 @@ from settings import settings
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+TARGET_FPS = 30
+STATS_INTERVAL_SECONDS = 5.0
 
 
 class Streamer:
@@ -33,6 +38,17 @@ class Streamer:
         self._encode_task: asyncio.Task | None = None
 
         self._frame_index = 0
+        self._captured_frames = 0
+        self._encoded_frames = 0
+        self._sent_chunks = 0
+        self._sent_bytes = 0
+        self._stats_started_at: float | None = None
+        self._capture_error: Exception | None = None
+
+    @property
+    def capture_error(self) -> Exception | None:
+        """The error that killed the capture loop, if any."""
+        return self._capture_error
 
     @property
     def capture(self) -> ScreenCapture:
@@ -57,6 +73,11 @@ class Streamer:
 
         self._capture_task = asyncio.create_task(self._capture_loop())
         self._encode_task = asyncio.create_task(self._encode_loop())
+
+        logger.info(
+            f"Streamer started: capturing {self.capture.width}x{self.capture.height} "
+            f"at {TARGET_FPS} fps, chunk size {settings.STREAM_CHUNK_SIZE} bytes."
+        )
 
     async def stop(self) -> None:
         """Stop the streamer and cancel tasks"""
@@ -93,13 +114,18 @@ class Streamer:
 
     async def _capture_loop(self) -> None:
         """Captures the frames and push into queue"""
-        target_fps = 30
+        target_fps = TARGET_FPS
         frame_interval = 1.0 / target_fps
 
         while self._running:
             loop_start = asyncio.get_running_loop().time()
             try:
                 frame = await asyncio.to_thread(self.capture.capture)
+                self._captured_frames += 1
+                if self._captured_frames == 1:
+                    logger.info(
+                        f"First frame captured: shape={frame.shape} dtype={frame.dtype}."
+                    )
                 if self._frame_queue.full():
                     try:
                         self._frame_queue.get_nowait()
@@ -109,8 +135,9 @@ class Streamer:
                 await self._frame_queue.put(frame)
             except asyncio.CancelledError:
                 break
-            except Exception:
-                logger.error("Error in screen capture loop", exc_info=True)
+            except Exception as exc:
+                self._capture_error = exc
+                logger.error(f"Error in screen capture loop: {exc}", exc_info=True)
                 break
 
             elapsed = asyncio.get_running_loop().time() - loop_start
@@ -120,6 +147,11 @@ class Streamer:
                     await asyncio.sleep(sleep_time)
                 except asyncio.CancelledError:
                     break
+
+        logger.info(
+            f"Capture loop stopped after {self._captured_frames} frame(s); "
+            f"queue depth {self._frame_queue.qsize()}."
+        )
 
     async def _encode_loop(self) -> None:
         """Consume queue and encode and send frames"""
@@ -139,9 +171,40 @@ class Streamer:
             finally:
                 self._frame_queue.task_done()
 
+            self._log_stats()
+
+            if self._capture_task is not None and self._capture_task.done():
+                logger.error(
+                    "Capture loop is no longer producing frames; stopping the encode loop."
+                )
+                break
+
+        logger.info(f"Encode loop stopped after {self._encoded_frames} encoded frame(s).")
+
+    def _log_stats(self) -> None:
+        """Emit a periodic summary of the streaming pipeline."""
+        now = time.monotonic()
+        if self._stats_started_at is None:
+            self._stats_started_at = now
+            return
+        elapsed = now - self._stats_started_at
+        if elapsed < STATS_INTERVAL_SECONDS:
+            return
+
+        self._stats_started_at = now
+        logger.info(
+            f"Stream stats: captured={self._captured_frames} "
+            f"encoded={self._encoded_frames} "
+            f"chunks_sent={self._sent_chunks} "
+            f"bytes_sent={self._sent_bytes} "
+            f"queue_depth={self._frame_queue.qsize()} "
+            f"elapsed={elapsed:.1f}s"
+        )
+
     async def _encode_and_send_chunk(self, frame: np.ndarray):
         """Encode frame, create chunks and send chunks"""
         packets = await asyncio.to_thread(self.encoder.encode, frame)
+        self._encoded_frames += 1
 
         for packet in packets:
             chunks = self._create_chunks(packet.data, settings.STREAM_CHUNK_SIZE)
@@ -166,6 +229,13 @@ class Streamer:
 
                 # send the chunk
                 await self._send(stream_chunk)
+                self._sent_chunks += 1
+                self._sent_bytes += len(data)
+
+            logger.debug(
+                f"Encoded frame {self._frame_index}: {len(packet.data)} bytes in "
+                f"{len(chunks)} chunk(s), keyframe={packet.is_keyframe}."
+            )
 
             self._frame_index += 1
 

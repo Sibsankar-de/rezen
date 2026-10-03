@@ -21,6 +21,11 @@ class DiscoveryService:
         self.broadcaster = broadcaster
         self.device_service = device_service
         self._on_device_discovered: Optional[Callable[[Device], None]] = None
+        self._running = False
+
+    @property
+    def is_running(self) -> bool:
+        return self._running
 
     @property
     def device_id(self) -> str:
@@ -37,6 +42,15 @@ class DiscoveryService:
         self._on_device_discovered = on_device_discovered
         self.broadcaster.subscribe(self._handle_packet)
         await self.broadcaster.start()
+
+        if self._running:
+            logger.info(
+                f"DiscoveryService already listening on port {self.port}; "
+                "refreshed the discovery callback."
+            )
+            return
+
+        self._running = True
         logger.info(
             f"DiscoveryService started continuous listening on port {self.port}."
         )
@@ -44,6 +58,10 @@ class DiscoveryService:
     async def stop_discovery(self) -> None:
         """Stop continuous listening for presence broadcasts."""
         self.broadcaster.unsubscribe(self._handle_packet)
+        if not self._running:
+            logger.info("DiscoveryService stopped listening (was not running).")
+            return
+        self._running = False
         logger.info("DiscoveryService stopped listening.")
 
     def _handle_packet(self, packet: Packet, address: tuple[str, int]) -> None:

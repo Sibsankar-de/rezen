@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 from models.stream_chunk import FlagType, StreamChunk
 from screen_cast.h264 import H264Decoder
@@ -6,6 +7,8 @@ from screen_cast.renderer import ScreenRenderer
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+STATS_INTERVAL_SECONDS = 5.0
 
 
 def _chunk_sort_key(chunk_id: str) -> int:
@@ -68,6 +71,13 @@ class Receiver:
         self._decoder = decoder
         self._renderer = renderer
 
+        self._received_chunks = 0
+        self._assembled_frames = 0
+        self._decoded_frames = 0
+        self._displayed_frames = 0
+        self._bytes_received = 0
+        self._stats_started_at: float | None = None
+
     @property
     def decoder(self) -> H264Decoder:
         if self._decoder is None:
@@ -87,6 +97,10 @@ class Receiver:
 
         self._running = True
         self.renderer.start()
+        logger.info(
+            f"Receiver started with renderer process "
+            f"pid={self.renderer._process.pid if self.renderer._process else None}."
+        )
 
     async def stop(self) -> None:
         """Stops the receiver"""
@@ -94,6 +108,14 @@ class Receiver:
             return
 
         self._running = False
+
+        logger.info(
+            f"Receiver stopping: chunks={self._received_chunks} "
+            f"assembled={self._assembled_frames} "
+            f"decoded={self._decoded_frames} "
+            f"displayed={self._displayed_frames} "
+            f"bytes={self._bytes_received}"
+        )
 
         self._buffer.clear()
         if self._decoder is not None:
@@ -114,20 +136,60 @@ class Receiver:
         if not self._running:
             return
 
+        self._received_chunks += 1
+        self._bytes_received += len(chunk.data or b"")
+
         data = self._buffer.add(chunk)
 
         if not data:
+            logger.debug(
+                f"Chunk buffered: frame={chunk.frame_id} chunk={chunk.chunk_id} "
+                f"{chunk.flag} pending_frames={len(self._buffer.frames)}."
+            )
             return
+
+        self._assembled_frames += 1
+        logger.debug(f"Frame assembled: frame={chunk.frame_id} size={len(data)} bytes.")
 
         try:
             frames = await asyncio.to_thread(self.decoder.decode, data)
+            self._decoded_frames += len(frames)
             if frames:
                 for frame in frames:
                     if not self.renderer.display(frame):
                         break
+                    self._displayed_frames += 1
+            else:
+                logger.debug(
+                    f"Decoder returned no frames for frame={chunk.frame_id} "
+                    f"size={len(data)}."
+                )
         except Exception as exc:
             logger.error(f"Error decoding or rendering chunk: {exc}", exc_info=True)
+
+        self._log_stats()
 
         if self.renderer.isClosed:
             logger.info("ScreenRenderer is closed, stopping Receiver.")
             await self.stop()
+
+    def _log_stats(self) -> None:
+        """Emit a periodic summary of the receiving pipeline."""
+        now = time.monotonic()
+        if self._stats_started_at is None:
+            self._stats_started_at = now
+            return
+        elapsed = now - self._stats_started_at
+        if elapsed < STATS_INTERVAL_SECONDS:
+            return
+
+        self._stats_started_at = now
+        logger.info(
+            f"Receive stats: chunks={self._received_chunks} "
+            f"assembled={self._assembled_frames} "
+            f"decoded={self._decoded_frames} "
+            f"displayed={self._displayed_frames} "
+            f"bytes={self._bytes_received} "
+            f"pending_frames={len(self._buffer.frames)} "
+            f"elapsed={elapsed:.1f}s"
+        )

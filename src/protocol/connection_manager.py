@@ -407,6 +407,10 @@ class ConnectionManager:
 
         return None
 
+    def get_connection_count(self) -> int:
+        """Number of currently registered connections."""
+        return len(self._connections)
+
     @staticmethod
     def get_connection_id(device: Device) -> str:
         return f"{device.id}:{device.ip}:{device.port}"

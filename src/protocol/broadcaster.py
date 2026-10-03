@@ -97,10 +97,11 @@ class Broadcaster:
             self._protocol = None
 
     def subscribe(self, handler: PacketHandler) -> None:
-        self._handlers.append(handler)
+        if handler not in self._handlers:
+            self._handlers.append(handler)
 
     def unsubscribe(self, handler: PacketHandler) -> None:
-        if handler in self._handlers:
+        while handler in self._handlers:
             self._handlers.remove(handler)
 
     def broadcast(self, packet: Packet) -> None:
