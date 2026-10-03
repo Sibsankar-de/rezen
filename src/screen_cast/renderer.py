@@ -8,9 +8,7 @@ import numpy as np
 
 from settings import settings
 from utils.logger import get_logger
-from utils.multiprocessing_fix import apply_multiprocessing_fix
 
-apply_multiprocessing_fix()
 logger = get_logger(__name__)
 
 
@@ -45,6 +43,7 @@ def _render_process_entry(
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(window_name, 960, 540)
         window_created = True
+        window_size: tuple[int, int] | None = None
 
         placeholder = np.zeros((540, 960, 3), dtype=np.uint8)
         cv2.putText(
@@ -81,6 +80,15 @@ def _render_process_entry(
             if frame is None:
                 stop_event.set()
                 break
+
+            # Match the window to the stream so frames are shown 1:1 instead of
+            # being scaled down again by the viewer.
+            if window_size is None:
+                height, width = frame.shape[:2]
+                if (width, height) != window_size:
+                    window_size = (width, height)
+                    cv2.resizeWindow(window_name, width, height)
+
             cv2.imshow(window_name, frame)
             key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), 27):

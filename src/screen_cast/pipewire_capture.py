@@ -298,7 +298,10 @@ class PipeWireScreenCapture:
             "videoconvert",
             "!",
             "videoscale",
-            "method=nearest-neighbour",
+            # Nearest-neighbour downscaling drops pixels instead of averaging
+            # them, which shimmers badly on text. Bilinear is far cleaner and
+            # costs little next to the conversion.
+            "method=bilinear",
             "!",
             f"video/x-raw,format=BGRA,width={self._width},height={self._height}",
             "!",

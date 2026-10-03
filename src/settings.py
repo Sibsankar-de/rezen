@@ -18,5 +18,11 @@ class Settings(BaseSettings):
     SCREEN_CAPTURE_MAX_WIDTH: int = 1280
     SCREEN_CAPTURE_MAX_HEIGHT: int = 720
 
+    # Encoder tuning. ultrafast disables deblocking and CABAC, which is very
+    # visible on text, so a slower preset is used by default.
+    SCREEN_STREAM_BITRATE: int = 8_000_000
+    SCREEN_STREAM_PRESET: str = "veryfast"
+
+
 
 settings = Settings()

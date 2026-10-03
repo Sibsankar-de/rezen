@@ -4,6 +4,8 @@ from typing import Any
 
 import numpy as np
 
+from settings import settings
+
 av: Any = None
 
 
@@ -40,14 +42,15 @@ class H264Encoder:
         width: int,
         height: int,
         fps: int = 30,
-        bitrate: int = 4_000_000,
-        preset: str = "ultrafast",
+        bitrate: int | None = None,
+        preset: str | None = None,
         tune: str = "zerolatency",
     ) -> None:
         self.width = width - (width % 2)
         self.height = height - (height % 2)
         self.fps = fps
-        self.bitrate = bitrate
+        self.bitrate = bitrate or settings.SCREEN_STREAM_BITRATE
+        self.preset = preset or settings.SCREEN_STREAM_PRESET
 
         self._closed = False
         self._pts = 0
@@ -62,11 +65,15 @@ class H264Encoder:
         self._codec.framerate = Fraction(fps, 1)
         self._codec.gop_size = fps
 
-        self._codec.bit_rate = bitrate
+        self._codec.bit_rate = self.bitrate
 
+        # Keep deblocking and CABAC on: the ultrafast preset turns both off and
+        # produces visible blocking artefacts on text. Lookahead stays off via
+        # the zerolatency tune because this is a live stream.
         self._codec.options = {
-            "preset": preset,
+            "preset": self.preset,
             "tune": tune,
+            "profile": "high",
         }
 
         self._codec.open()

@@ -31,6 +31,8 @@ from gi.repository import GLib
 PORTAL_BUS = "org.freedesktop.portal.Desktop"
 PORTAL_PATH = "/org/freedesktop/portal/desktop"
 SOURCE_MONITOR = 1
+# 1 = embedded: ask the portal to draw the cursor into the stream. Compositors
+# are not required to honour it.
 CURSOR_EMBEDDED = 1
 CONSENT_TIMEOUT_SECONDS = 300.0
 MAX_LIFETIME_SECONDS = 3600.0

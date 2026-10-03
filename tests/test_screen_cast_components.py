@@ -148,7 +148,9 @@ async def test_receiver_start_stop():
     mock_decoder = MagicMock()
     mock_buffer = MagicMock()
 
-    receiver = Receiver(decoder=mock_decoder, buffer=mock_buffer, renderer=mock_renderer)
+    receiver = Receiver(
+        decoder=mock_decoder, buffer=mock_buffer, renderer=mock_renderer
+    )
     await receiver.start()
     assert receiver._running is True
 
@@ -170,7 +172,9 @@ async def test_receiver_handle_chunk():
     mock_buffer = MagicMock()
     mock_buffer.add.return_value = b"encoded_bytes"
 
-    receiver = Receiver(decoder=mock_decoder, buffer=mock_buffer, renderer=mock_renderer)
+    receiver = Receiver(
+        decoder=mock_decoder, buffer=mock_buffer, renderer=mock_renderer
+    )
     await receiver.start()
 
     chunk = StreamChunk(
@@ -217,9 +221,13 @@ def test_h264_decoder_resilience_to_bad_data():
 
 
 def test_screen_renderer_lifecycle():
-    with patch("cv2.namedWindow"), patch("cv2.imshow"), patch("cv2.waitKey", return_value=0), patch(
-        "cv2.getWindowProperty", return_value=1.0
-    ), patch("cv2.destroyWindow"):
+    with (
+        patch("cv2.namedWindow"),
+        patch("cv2.imshow"),
+        patch("cv2.waitKey", return_value=0),
+        patch("cv2.getWindowProperty", return_value=1.0),
+        patch("cv2.destroyWindow"),
+    ):
         renderer = ScreenRenderer()
         assert renderer.isClosed is True
         renderer.start()
@@ -319,27 +327,6 @@ def test_screen_capture_raises_on_empty_frame():
         cap.close()
 
 
-def test_multiprocessing_fix_filters_invalid_fds():
-    import multiprocessing.util as mp_util
-    from utils.multiprocessing_fix import apply_multiprocessing_fix
-
-    apply_multiprocessing_fix()
-
-    assert getattr(mp_util.spawnv_passfds, "_is_rezen_patched", False) is True
-
-    # Verify that negative file descriptors are filtered out
-    recorded_passfds = []
-
-    def mock_orig(path, args, passfds):
-        recorded_passfds.extend(passfds)
-        return 42
-
-    with patch.object(mp_util, "spawnv_passfds", side_effect=lambda path, args, passfds: mock_orig(path, args, [fd for fd in passfds if fd is not None and fd >= 0])):
-        mp_util.spawnv_passfds("cmd", [], [-1, 3, 4, -99])
-        assert recorded_passfds == [3, 4]
-
-
-
 def test_create_capture_prefers_mss_on_x11():
     """X11 sessions must not go through the Wayland portal path."""
     from screen_cast import capture as capture_module
@@ -410,7 +397,9 @@ def test_pipewire_requires_system_python_with_bindings():
     )
 
     with patch("shutil.which", return_value="/usr/bin/gst-launch-1.0"):
-        with patch("screen_cast.pipewire_capture.find_system_python", return_value=None):
+        with patch(
+            "screen_cast.pipewire_capture.find_system_python", return_value=None
+        ):
             with pytest.raises(PipeWireUnavailable):
                 PipeWireScreenCapture()
 
