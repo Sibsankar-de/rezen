@@ -151,3 +151,31 @@ async def test_connection_manager_connect_and_exchange():
         await cm1.stop()
         await cm2.stop()
 
+
+def test_tcp_serializer_stream_chunk_bytes_payload():
+    from models.stream_chunk import ChunkType, FlagType, StreamChunk
+    from protocol.serializer import TCPSerializer
+
+    chunk = StreamChunk(
+        frame_id="frame_99",
+        chunk_id="chunk_0",
+        type=ChunkType.VIDEO,
+        flag=FlagType.START_CHUNK,
+        size=12,
+        total_chunks=1,
+        data=b"video_bytes_data\x00\xff",
+    )
+    pkt = Packet(
+        type=PacketType.SCREEN_FRAME_CHUNK,
+        version="1.0",
+        device_id="dev_streamer",
+        payload=chunk,
+    )
+    raw = TCPSerializer.serialize(pkt)
+    assert isinstance(raw, bytes)
+
+    deserialized = asyncio.run(TCPSerializer.deserialize(raw))
+    assert deserialized.type == PacketType.SCREEN_FRAME_CHUNK
+    assert deserialized.payload["data"] == b"video_bytes_data\x00\xff"
+
+

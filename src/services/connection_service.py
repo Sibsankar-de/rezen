@@ -29,9 +29,19 @@ class ConnectionService:
         self._broadcaster_service = broadcaster_service
         self._device_service = device_service
 
+        self._latest_connection: Connection | None = None
+
     @property
     def device(self) -> Device:
         return self._device_service.get_current_device()
+
+    @property
+    def latest_connection(self) -> Connection | None:
+        return self._latest_connection
+
+    @latest_connection.setter
+    def latest_connection(self, connection: Connection | None) -> None:
+        self._latest_connection = connection
 
     async def request_connection(self, to_device: Device) -> None:
         """Send a connection request to the specified device."""
@@ -63,7 +73,9 @@ class ConnectionService:
 
         self._broadcaster.send(accept_packet, (from_device.ip, from_device.port))
 
-        return await self._establish_connection(from_device)
+        connection = await self._establish_connection(from_device)
+        await self.complete_connection(connection)
+        return connection
 
     async def _establish_connection(self, remote_device: Device) -> Connection:
         """Creates a new long lived connection"""
@@ -73,6 +85,7 @@ class ConnectionService:
 
         try:
             connection = await self._connection_manager.connect(remote_device)
+            self._latest_connection = connection
             logger.info(
                 f"Connection established: id={connection.id} with {remote_device.name}"
             )
@@ -87,6 +100,8 @@ class ConnectionService:
     async def disconnect_connection(self, connection_id: str) -> None:
         """Disconnect a connection"""
         logger.info(f"Disconnecting connection id={connection_id}")
+        if self._latest_connection and self._latest_connection.id == connection_id:
+            self._latest_connection = None
         await self._connection_manager.disconnect(connection_id)
 
     async def get_connection(self, from_device: Device) -> Connection | None:
@@ -101,6 +116,8 @@ class ConnectionService:
 
         if not connection:
             return False
+
+        self._latest_connection = connection
 
         # stops the broadcasting
         try:
@@ -131,4 +148,16 @@ class ConnectionService:
     async def close_connection(self, connection_id: str) -> None:
         """Close or disconnect a connection"""
         logger.info(f"Closing connection id={connection_id}")
+        if self._latest_connection and self._latest_connection.id == connection_id:
+            self._latest_connection = None
         await self._connection_manager.disconnect(connection_id)
+
+    async def send_to_latest(self, packet: Packet) -> None:
+        """Send packet to latest connection"""
+        if not self._latest_connection:
+            logger.warning("Cannot send packet: no active connection.")
+            return
+
+        await self._connection_manager.send(
+            connection_id=self._latest_connection.id, packet=packet
+        )

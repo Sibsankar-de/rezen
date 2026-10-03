@@ -120,6 +120,37 @@ async def test_close_connection_calls_disconnect(connection_service):
     service, cm, _ = connection_service
     cm.disconnect = AsyncMock()
 
+    conn = MagicMock(spec=Connection)
+    conn.id = "conn_123"
+    service.latest_connection = conn
+
     await service.close_connection("conn_123")
     cm.disconnect.assert_awaited_once_with("conn_123")
+    assert service.latest_connection is None
+
+
+@pytest.mark.asyncio
+async def test_complete_connection_sets_latest_connection(connection_service):
+    service, _, bcs = connection_service
+    conn = MagicMock(spec=Connection)
+    conn.id = "conn_abc"
+
+    result = await service.complete_connection(conn)
+    assert result is True
+    assert service.latest_connection == conn
+
+
+@pytest.mark.asyncio
+async def test_disconnect_connection_clears_latest_connection(connection_service):
+    service, cm, _ = connection_service
+    cm.disconnect = AsyncMock()
+
+    conn = MagicMock(spec=Connection)
+    conn.id = "conn_xyz"
+    service.latest_connection = conn
+
+    await service.disconnect_connection("conn_xyz")
+    cm.disconnect.assert_awaited_once_with("conn_xyz")
+    assert service.latest_connection is None
+
 
