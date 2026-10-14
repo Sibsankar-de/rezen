@@ -16,6 +16,7 @@ class PacketType(StrEnum):
     PING = "ping"
 
     SCREEN_FRAME_CHUNK = "screen_frame_chunk"
+    INPUT_EVENT = "input_event"
 
 
 @dataclass(slots=True)
