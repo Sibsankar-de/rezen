@@ -45,6 +45,7 @@ class InputReceiver:
             self._receive_task = None
 
         await self._clear_queue()
+        self._keyboard_controller.close()
         logger.info("InputReceiver stopped.")
 
     async def receive_input(self, input_object: InputObject) -> None:

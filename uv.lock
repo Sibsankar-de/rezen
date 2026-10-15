@@ -724,6 +724,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "av" },
+    { name = "evdev", marker = "sys_platform == 'linux'" },
     { name = "mss" },
     { name = "numpy" },
     { name = "opencv-python" },
@@ -747,6 +748,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "av", specifier = ">=19.0.0" },
+    { name = "evdev", marker = "sys_platform == 'linux'", specifier = ">=1.7.0" },
     { name = "mss", specifier = ">=10.2.0" },
     { name = "numpy", specifier = ">=2.5.3" },
     { name = "opencv-python", specifier = ">=5.0.0.93" },

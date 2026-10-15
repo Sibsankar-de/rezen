@@ -26,6 +26,18 @@ which Rezen locates automatically.
 The first connection on a Wayland session shows a GNOME **Share** dialog that must
 be approved. The stream ends when you disconnect.
 
+### Keyboard control on Wayland (Ubuntu)
+
+If using Ubuntu with Wayland, run these commands to allow keyboard capture and injection:
+
+```bash
+sudo usermod -aG input $USER
+echo 'KERNEL=="uinput", GROUP="input", MODE="0660"' | sudo tee /etc/udev/rules.d/99-uinput.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+Log out and back in (or run `newgrp input`) to apply changes.
+
 On an X11 session nothing extra is needed.
 
 ## Running

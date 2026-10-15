@@ -321,3 +321,108 @@ def test_keyboard_controller_sequential_apply():
     assert release_order == ["c", "b", "a"]
 
 
+def test_evdev_key_normalizer_and_denormalizer():
+    from evdev import ecodes
+
+    from input_control.normalizer import KeyNormalizer
+
+    # Test evdev to normalized string
+    assert KeyNormalizer.normalize_evdev_key(ecodes.KEY_A) == "char:a"
+    assert KeyNormalizer.normalize_evdev_key(ecodes.KEY_1) == "char:1"
+    assert KeyNormalizer.normalize_evdev_key(ecodes.KEY_ENTER) == "special:enter"
+    assert KeyNormalizer.normalize_evdev_key(ecodes.KEY_LEFTSHIFT) == "special:shift"
+    assert KeyNormalizer.normalize_evdev_key(999999) is None
+
+    # Test normalized string to evdev
+    assert KeyNormalizer.denormalize_to_evdev("char:a") == ecodes.KEY_A
+    assert KeyNormalizer.denormalize_to_evdev("char:A") == ecodes.KEY_A
+    assert KeyNormalizer.denormalize_to_evdev("char:1") == ecodes.KEY_1
+    assert KeyNormalizer.denormalize_to_evdev("special:enter") == ecodes.KEY_ENTER
+    assert KeyNormalizer.denormalize_to_evdev("special:shift") == ecodes.KEY_LEFTSHIFT
+    assert KeyNormalizer.denormalize_to_evdev("special:shift_l") == ecodes.KEY_LEFTSHIFT
+    assert KeyNormalizer.denormalize_to_evdev("special:leftshift") == ecodes.KEY_LEFTSHIFT
+    assert KeyNormalizer.denormalize_to_evdev("KEY_A") == ecodes.KEY_A
+    assert KeyNormalizer.denormalize_to_evdev("unknown:foo") is None
+
+
+def test_keyboard_controller_evdev_apply():
+    from evdev import ecodes
+
+    from input_control.keyboard_controller import KeyboardController
+
+    controller = KeyboardController()
+    mock_uinput = MagicMock()
+    controller._uinput = mock_uinput
+    controller._backend = "evdev"
+
+    event = InputObject(type=InputType.KEYBOARD, data=["char:x", "char:y"])
+    controller.apply(event)
+
+    # Verify write calls: press x (1), press y (1), syn, release y (0), release x (0), syn
+    writes = mock_uinput.write.call_args_list
+    assert len(writes) == 4
+    # Press phase
+    assert writes[0] == ((ecodes.EV_KEY, ecodes.KEY_X, 1),)
+    assert writes[1] == ((ecodes.EV_KEY, ecodes.KEY_Y, 1),)
+    # Release phase in reverse order
+    assert writes[2] == ((ecodes.EV_KEY, ecodes.KEY_Y, 0),)
+    assert writes[3] == ((ecodes.EV_KEY, ecodes.KEY_X, 0),)
+    assert mock_uinput.syn.call_count == 2
+
+    controller.close()
+    mock_uinput.close.assert_called_once()
+    assert controller._uinput is None
+
+
+@pytest.mark.asyncio
+async def test_keyboard_capture_evdev_flow():
+    import asyncio
+
+    from evdev import ecodes
+
+    from input_control.keyboard_capture import KeyboardCapture
+
+    kc = KeyboardCapture()
+    captured_events = []
+
+    def mock_enqueue(event: InputObject):
+        captured_events.append(event)
+
+    # Create a mock evdev device
+    mock_dev = MagicMock()
+    mock_dev.name = "Mock Keyboard"
+    mock_dev.path = "/dev/input/event99"
+
+    class MockEvent:
+        def __init__(self, type_, code, value):
+            self.type = type_
+            self.code = code
+            self.value = value
+
+    async def mock_async_read_loop():
+        # Press 'a'
+        yield MockEvent(ecodes.EV_KEY, ecodes.KEY_A, 1)
+        await asyncio.sleep(0.01)
+        # Release 'a'
+        yield MockEvent(ecodes.EV_KEY, ecodes.KEY_A, 0)
+        await asyncio.sleep(0.01)
+
+    mock_dev.async_read_loop = mock_async_read_loop
+
+    # Force discovery to return mock device
+    kc._discover_evdev_keyboards = MagicMock(return_value=[mock_dev])
+
+    await kc.start(mock_enqueue)
+    assert kc._backend == "evdev"
+    assert len(kc._evdev_tasks) == 1
+
+    await asyncio.sleep(0.05)
+    assert len(captured_events) >= 1
+    assert "char:a" in captured_events[0].data
+
+    await kc.stop()
+    assert len(kc._evdev_tasks) == 0
+    assert len(kc._evdev_devices) == 0
+
+
+
