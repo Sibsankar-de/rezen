@@ -32,7 +32,7 @@ class InputStreamer:
         self._send = send
 
         await self._keyboard_capture.start(enqueue=self._handle_keyboard_input)
-        self._send_task = asyncio.create_task(self._run_send_loop)
+        self._send_task = asyncio.create_task(self._run_send_loop())
 
         logger.info("Input streamer started. Capturing input events.")
 
@@ -46,17 +46,21 @@ class InputStreamer:
 
         if self._send_task is not None:
             self._send_task.cancel()
-            asyncio.gather(self._send_task, return_exceptions=True)
+            await asyncio.gather(self._send_task, return_exceptions=True)
+            self._send_task = None
 
         await self._clear_queue()
 
     def _handle_keyboard_input(self, input_object: InputObject) -> None:
         """Handle keyboard on press event"""
-        self._input_queue.put_nowait(input_object)
+        try:
+            self._input_queue.put_nowait(input_object)
+        except asyncio.QueueFull:
+            logger.warning("Input stream queue full, dropping event")
 
     async def _run_send_loop(self) -> None:
         """Listen the queue and send the input objects"""
-        while self._running and not self._input_queue.empty():
+        while self._running:
             try:
                 input_object = await self._input_queue.get()
             except asyncio.CancelledError:

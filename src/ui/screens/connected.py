@@ -10,6 +10,7 @@ from models.device import Device
 from models.connection import Connection
 from services.connection_service import ConnectionService
 from services.device_service import DeviceService
+from services.input_service import InputService
 from services.screen_cast_service import ScreenCastService
 from utils.logger import get_logger
 from ..layout import BaseLayout
@@ -27,6 +28,7 @@ class ConnectedScreen(Screen):
         connection_service: Optional[ConnectionService] = None,
         device_service: Optional[DeviceService] = None,
         screen_cast_service: Optional[ScreenCastService] = None,
+        input_service: Optional[InputService] = None,
         is_streamer: bool = False,
         **kwargs,
     ):
@@ -36,6 +38,7 @@ class ConnectedScreen(Screen):
         self._connection_service = connection_service or container.connection_service
         self._device_service = device_service or container.device_service
         self._screen_cast_service = screen_cast_service or container.screen_cast_service
+        self._input_service = input_service or container.input_service
         self._is_streamer = is_streamer
         self._stopped = False
         self._health_timer: Timer | None = None
@@ -87,11 +90,13 @@ class ConnectedScreen(Screen):
         try:
             if self._is_streamer:
                 await self._screen_cast_service.stop_streaming()
+                await self._input_service.stop_streamer()
             else:
                 await self._screen_cast_service.stop_receiving()
+                await self._input_service.stop_receiver()
         except Exception as exc:
             logger.error(
-                f"Error stopping screen cast service: {exc}",
+                f"Error stopping screen cast / input service: {exc}",
                 exc_info=True,
             )
 

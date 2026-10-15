@@ -7,7 +7,7 @@ logger = get_logger(__name__)
 
 class KeyNormalizer:
     @staticmethod
-    def normalize_key(key: Key | KeyCode | None) -> str:
+    def normalize_key(key: Key | KeyCode | None) -> str | None:
         """Convert a pynput key into a serializable identifier."""
 
         if isinstance(key, Key):
@@ -22,20 +22,33 @@ class KeyNormalizer:
                 return f"char:{key.char}"
 
         logger.warning(f"Unsupported key: {key!r}")
+        return None
 
     @staticmethod
     def denormalize_key(name: str) -> Key | KeyCode | None:
         """Convert a normalized identifier into a pynput key."""
+        if not name or ":" not in name:
+            logger.warning(f"Malformed key identifier: {name}")
+            return None
 
         kind, value = name.split(":", 1)
 
         if kind == "special":
-            return Key[value]
+            try:
+                return Key[value]
+            except KeyError:
+                logger.warning(f"Unknown special key: {value}")
+                return None
 
         if kind == "vk":
-            return KeyCode.from_vk(int(value))
+            try:
+                return KeyCode.from_vk(int(value))
+            except ValueError:
+                logger.warning(f"Invalid vk value: {value}")
+                return None
 
         if kind == "char":
             return KeyCode.from_char(value)
 
         logger.warning(f"Unknown key identifier: {name}")
+        return None

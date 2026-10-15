@@ -24,6 +24,8 @@ class PacketSerializer:
         def _default(obj: Any) -> Any:
             if isinstance(obj, (bytes, bytearray)):
                 return {"__bytes__": base64.b64encode(obj).decode("ascii")}
+            if isinstance(obj, (set, frozenset)):
+                return list(obj)
             raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
         return json.dumps(

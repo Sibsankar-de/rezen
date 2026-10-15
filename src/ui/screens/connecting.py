@@ -12,6 +12,7 @@ from models.connection import Connection, ConnectionState
 from services.connection_service import ConnectionService
 from services.device_service import DeviceService
 from services.discovery_service import DiscoveryService
+from services.input_service import InputService
 from services.screen_cast_service import ScreenCastService
 from utils.logger import get_logger
 from .connected import ConnectedScreen
@@ -30,6 +31,7 @@ class ConnectingScreen(Screen):
         connection_service: Optional[ConnectionService] = None,
         device_service: Optional[DeviceService] = None,
         screen_cast_service: Optional[ScreenCastService] = None,
+        input_service: Optional[InputService] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -38,6 +40,7 @@ class ConnectingScreen(Screen):
         self._connection_service = connection_service or container.connection_service
         self._device_service = device_service or container.device_service
         self._screen_cast_service = screen_cast_service or container.screen_cast_service
+        self._input_service = input_service or container.input_service
         self._connection: Connection | None = None
 
     def compose(self) -> ComposeResult:
@@ -115,6 +118,18 @@ class ConnectingScreen(Screen):
                         exc_info=True,
                     )
 
+                logger.info("Starting input receiving as discovered receiver...")
+                try:
+                    await asyncio.wait_for(
+                        self._input_service.start_receiver(),
+                        timeout=5.0,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        f"Input receiving startup delayed or error: {exc}",
+                        exc_info=True,
+                    )
+
                 self.app.switch_screen(
                     ConnectedScreen(
                         device=self._device,
@@ -122,6 +137,7 @@ class ConnectingScreen(Screen):
                         connection_service=self._connection_service,
                         device_service=self._device_service,
                         screen_cast_service=self._screen_cast_service,
+                        input_service=self._input_service,
                         is_streamer=False,
                     )
                 )
@@ -168,6 +184,10 @@ class ConnectingScreen(Screen):
                 )
                 try:
                     await self._screen_cast_service.stop_receiving()
+                except Exception:
+                    pass
+                try:
+                    await self._input_service.stop_receiver()
                 except Exception:
                     pass
                 try:

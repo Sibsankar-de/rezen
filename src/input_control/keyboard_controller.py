@@ -21,7 +21,7 @@ class KeyboardController:
             try:
                 if key is not None:
                     self._keyboard_controller.press(key)
-            except:
+            except Exception:
                 logger.error(f"Failed to apply key {key}", exc_info=True)
                 break
 
@@ -30,5 +30,5 @@ class KeyboardController:
             try:
                 if key is not None:
                     self._keyboard_controller.release(key)
-            except:
+            except Exception:
                 pass

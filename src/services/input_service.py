@@ -1,4 +1,4 @@
-from models.input import InputObject
+from models.input import InputObject, InputType
 
 from models.connection import Connection
 from protocol.packet import Packet, PacketType
@@ -45,19 +45,20 @@ class InputService:
     async def start_streamer(self) -> None:
         """Start the input streamer"""
         logger.info("Starting input streaming...")
-        await self._input_streamer.start(self._handle_send_event)
+        await self.input_streamer.start(self._handle_send_event)
 
     async def stop_streamer(self) -> None:
         """Stop the input streamer"""
         logger.info("Stopping input streaming...")
         if self._input_streamer is not None:
-            await self._input_streamer.start()
+            await self._input_streamer.stop()
             self._input_streamer = None
 
     async def _handle_send_event(self, event: InputObject) -> None:
         """Handle sending the packet to a connection"""
         packet = Packet(
             type=PacketType.INPUT_EVENT,
+            version="1.0",
             device_id=self._device_service.get_current_device().id,
             payload=event,
         )
@@ -67,14 +68,16 @@ class InputService:
     async def start_receiver(self) -> None:
         """Start the input receiver"""
         logger.info("Starting input receiver...")
-        await self._input_receiver.start()
+        await self.input_receiver.start()
         await self._connection_manager.subscribe(self._handle_input_packet)
 
     async def stop_receiver(self) -> None:
         """Stop the input receiver"""
         logger.info("Stopping input receiver...")
-        await self._input_receiver.stop()
         await self._connection_manager.unsubscribe(self._handle_input_packet)
+        if self._input_receiver is not None:
+            await self._input_receiver.stop()
+            self._input_receiver = None
 
     async def _handle_input_packet(
         self, connection: Connection, packet: Packet
@@ -99,7 +102,15 @@ class InputService:
             return
 
         payload = packet.payload
-        if not isinstance(payload, InputObject):
+        if isinstance(payload, dict):
+            payload = InputObject(
+                type=InputType(payload.get("type", InputType.KEYBOARD)),
+                data=set(payload.get("data", [])),
+            )
+        elif isinstance(payload, InputObject):
+            if not isinstance(payload.data, set):
+                payload.data = set(payload.data)
+        else:
             return
 
-        await self._input_receiver.receive_input(payload)
+        await self.input_receiver.receive_input(payload)

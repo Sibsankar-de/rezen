@@ -28,7 +28,7 @@ class InputReceiver:
             return
 
         self._running = True
-        self._receive_task = asyncio.create_task(self._run_receive_loop)
+        self._receive_task = asyncio.create_task(self._run_receive_loop())
 
     async def stop(self) -> None:
         """Stop the receiver"""
@@ -40,6 +40,7 @@ class InputReceiver:
         if self._receive_task is not None:
             self._receive_task.cancel()
             await asyncio.gather(self._receive_task, return_exceptions=True)
+            self._receive_task = None
 
         await self._clear_queue()
 
@@ -49,7 +50,7 @@ class InputReceiver:
 
     async def _run_receive_loop(self) -> None:
         """Listen queue and perform oparation"""
-        while self._running and not self._receive_queue.empty():
+        while self._running:
             try:
                 event = await self._receive_queue.get()
             except asyncio.CancelledError:
