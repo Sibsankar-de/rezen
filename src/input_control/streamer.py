@@ -1,11 +1,10 @@
 import asyncio
-from typing import Callable, Awaitable
+from collections.abc import Awaitable, Callable
 
-from models.input import InputObject
 from input_control.keyboard_capture import KeyboardCapture
-from utils.logger import get_logger
-
+from models.input import InputObject
 from settings import settings
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -55,11 +54,16 @@ class InputStreamer:
         """Handle keyboard on press event"""
         try:
             self._input_queue.put_nowait(input_object)
+            logger.info(
+                f"[STREAMER] Queued input event: {input_object.data} "
+                f"(pending in queue: {self._input_queue.qsize()})"
+            )
         except asyncio.QueueFull:
             logger.warning("Input stream queue full, dropping event")
 
     async def _run_send_loop(self) -> None:
         """Listen the queue and send the input objects"""
+        logger.info("[STREAMER] Send loop started.")
         while self._running:
             try:
                 input_object = await self._input_queue.get()
@@ -67,13 +71,20 @@ class InputStreamer:
                 break
 
             try:
+                logger.info(
+                    f"[STREAMER] Sending input event to network: {input_object.data}"
+                )
                 await self._send(input_object)
+                logger.info(
+                    f"[STREAMER] Successfully sent input event: {input_object.data}"
+                )
             except asyncio.CancelledError:
                 break
             except Exception:
-                logger.error("Error in input event send loop", exc_info=True)
+                logger.exception("Error in input event send loop")
             finally:
                 self._input_queue.task_done()
+        logger.info("[STREAMER] Send loop stopped.")
 
     async def _clear_queue(self) -> None:
         """Removes all elements from the queue"""

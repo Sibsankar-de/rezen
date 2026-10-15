@@ -221,6 +221,7 @@ def test_packet_serialization_with_input_object():
 
 def test_key_normalizer_and_denormalizer():
     from pynput.keyboard import Key, KeyCode
+
     from input_control.normalizer import KeyNormalizer
 
     assert KeyNormalizer.normalize_key(Key.enter) == "special:enter"
@@ -238,7 +239,9 @@ def test_key_normalizer_and_denormalizer():
 @pytest.mark.asyncio
 async def test_keyboard_capture_press_and_release():
     import asyncio
+
     from pynput.keyboard import KeyCode
+
     from input_control.keyboard_capture import KeyboardCapture
 
     kc = KeyboardCapture()
@@ -263,8 +266,9 @@ async def test_keyboard_capture_press_and_release():
 @pytest.mark.asyncio
 async def test_input_streamer_and_receiver_flow():
     import asyncio
-    from input_control.streamer import InputStreamer
+
     from input_control.receiver import InputReceiver
+    from input_control.streamer import InputStreamer
 
     streamer = InputStreamer()
     sent_events = []
@@ -299,4 +303,21 @@ async def test_input_streamer_and_receiver_flow():
     receiver._keyboard_controller.apply.assert_called_once_with(event1)
     await receiver.stop()
     assert not receiver._running
+
+
+def test_keyboard_controller_sequential_apply():
+    from input_control.keyboard_controller import KeyboardController
+
+    controller = KeyboardController()
+    controller._keyboard_controller = MagicMock()
+
+    # Pass sequential keys: 'a', 'b', 'c'
+    event = InputObject(type=InputType.KEYBOARD, data=["char:a", "char:b", "char:c"])
+    controller.apply(event)
+
+    call_order = [call[0][0].char for call in controller._keyboard_controller.press.call_args_list]
+    assert call_order == ["a", "b", "c"]
+    release_order = [call[0][0].char for call in controller._keyboard_controller.release.call_args_list]
+    assert release_order == ["c", "b", "a"]
+
 

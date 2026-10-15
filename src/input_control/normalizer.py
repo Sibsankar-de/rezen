@@ -14,12 +14,13 @@ class KeyNormalizer:
             return f"special:{key.name}"
 
         if isinstance(key, KeyCode):
-            if key.vk is not None:
-                return f"vk:{key.vk}"
-
-            # Fallback for character-only keys.
+            # Prioritize character representation (e.g. 'a', '1', '@')
             if key.char is not None:
                 return f"char:{key.char}"
+
+            # Fallback for virtual key codes without char
+            if key.vk is not None:
+                return f"vk:{key.vk}"
 
         logger.warning(f"Unsupported key: {key!r}")
         return None
