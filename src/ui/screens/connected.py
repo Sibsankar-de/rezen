@@ -41,6 +41,7 @@ class ConnectedScreen(Screen):
         self._input_service = input_service or container.input_service
         self._is_streamer = is_streamer
         self._stopped = False
+        self._connected = True
         self._health_timer: Timer | None = None
 
     def compose(self) -> ComposeResult:
@@ -57,7 +58,11 @@ class ConnectedScreen(Screen):
                             f"IP: {self._device.ip}:{self._device.port}  |  OS: {self._device.os}",
                             id="connected-info",
                         )
-                        role_text = "Streaming screen" if self._is_streamer else "Receiving screen"
+                        role_text = (
+                            "Streaming screen"
+                            if self._is_streamer
+                            else "Receiving screen"
+                        )
                         yield Label(
                             f"Status: Active ({role_text}) (id: {self._connection.id})",
                             id="connected-status",
@@ -66,6 +71,7 @@ class ConnectedScreen(Screen):
 
     def on_mount(self) -> None:
         """Poll the streaming pipeline health while connected."""
+        self._connection_service.set_on_remote_disconnect(self._handle_disconnect)
         self._health_timer = self.set_interval(2.0, self._check_health)
 
     def _check_health(self) -> None:
@@ -100,20 +106,28 @@ class ConnectedScreen(Screen):
                 exc_info=True,
             )
 
+    async def _handle_disconnect(self, _connection: Connection):
+        """Discoonect handler"""
+        if not self._connected:
+            return
+
+        logger.info(
+            f"Disconnect requested for {self._device.name} (id: {self._connection.id})"
+        )
+        self._connected = False
+        await self._stop_screen_cast()
+        try:
+            await self._connection_service.close_connection(self._connection.id)
+        except Exception as exc:
+            logger.error(
+                f"Error closing connection {self._connection.id}: {exc}",
+                exc_info=True,
+            )
+        self.app.pop_screen()
+
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-disconnect":
-            logger.info(
-                f"Disconnect requested for {self._device.name} (id: {self._connection.id})"
-            )
-            await self._stop_screen_cast()
-            try:
-                await self._connection_service.close_connection(self._connection.id)
-            except Exception as exc:
-                logger.error(
-                    f"Error closing connection {self._connection.id}: {exc}",
-                    exc_info=True,
-                )
-            self.app.pop_screen()
+            await self._handle_disconnect(self._connection_service.latest_connection)
 
     async def on_unmount(self) -> None:
         await self._stop_screen_cast()

@@ -12,6 +12,10 @@ class ConnectionState(StrEnum):
     DISCONNECTED = "disconnected"
 
 
+async def _noop() -> None:
+    pass
+
+
 @dataclass
 class Connection:
     id: str
