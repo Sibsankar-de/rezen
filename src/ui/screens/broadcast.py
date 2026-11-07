@@ -177,15 +177,15 @@ class BroadcastScreen(Screen):
                     exc_info=True,
                 )
 
-            logger.info("Starting input streaming as broadcaster...")
+            logger.info("Starting input receiving as broadcaster (host receives remote input)...")
             try:
                 await asyncio.wait_for(
-                    self._input_service.start_streamer(),
+                    self._input_service.start_receiver(),
                     timeout=5.0,
                 )
             except Exception as exc:
                 logger.warning(
-                    f"Input streaming startup delayed or error: {exc}",
+                    f"Input receiver startup delayed or error: {exc}",
                     exc_info=True,
                 )
 

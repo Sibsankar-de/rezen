@@ -118,15 +118,15 @@ class ConnectingScreen(Screen):
                         exc_info=True,
                     )
 
-                logger.info("Starting input receiving as discovered receiver...")
+                logger.info("Starting input streaming as viewer (viewer sends input to host)...")
                 try:
                     await asyncio.wait_for(
-                        self._input_service.start_receiver(),
+                        self._input_service.start_streamer(),
                         timeout=5.0,
                     )
                 except Exception as exc:
                     logger.warning(
-                        f"Input receiving startup delayed or error: {exc}",
+                        f"Input streamer startup delayed or error: {exc}",
                         exc_info=True,
                     )
 

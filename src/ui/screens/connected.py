@@ -96,10 +96,10 @@ class ConnectedScreen(Screen):
         try:
             if self._is_streamer:
                 await self._screen_cast_service.stop_streaming()
-                await self._input_service.stop_streamer()
+                await self._input_service.stop_receiver()
             else:
                 await self._screen_cast_service.stop_receiving()
-                await self._input_service.stop_receiver()
+                await self._input_service.stop_streamer()
         except Exception as exc:
             logger.error(
                 f"Error stopping screen cast / input service: {exc}",
