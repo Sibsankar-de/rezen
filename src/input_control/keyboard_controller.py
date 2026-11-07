@@ -68,6 +68,10 @@ class KeyboardController:
 
     def _init_evdev(self) -> bool:
         """Attempt to initialize evdev UInput virtual device."""
+        _UInputError: type[Exception] = getattr(evdev, "UInputError", None) or type(
+            "_UInputError", (Exception,), {}
+        )
+
         try:
             self._uinput = evdev.UInput(name="rezen-virtual-keyboard")
             self._backend = "evdev"
@@ -75,12 +79,13 @@ class KeyboardController:
                 "[CONTROLLER] Successfully initialized evdev UInput virtual keyboard device."
             )
             return True
-        except (PermissionError, OSError) as e:
+        except (PermissionError, OSError, _UInputError) as e:
             logger.warning(
                 f"[CONTROLLER] Cannot initialize evdev UInput ({e}). "
                 "To enable native Wayland input injection via evdev, configure uinput permissions:\n"
                 '    echo \'KERNEL=="uinput", GROUP="input", MODE="0660"\' | sudo tee /etc/udev/rules.d/99-uinput.rules\n'
                 "    sudo usermod -aG input $USER\n"
+                "(then log out and back in, or run: sudo udevadm control --reload-rules && sudo udevadm trigger)\n"
                 "Falling back to pynput Controller."
             )
         except Exception as e:  # noqa: BLE001
