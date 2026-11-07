@@ -1,6 +1,7 @@
 import asyncio
 
 from input_control.keyboard_controller import KeyboardController
+from input_control.mouse_controller import MouseController
 from models.input import InputObject, InputType
 from settings import settings
 from utils.logger import get_logger
@@ -13,6 +14,7 @@ class InputReceiver:
 
     def __init__(self):
         self._keyboard_controller = KeyboardController()
+        self._mouse_controller = MouseController()
 
         self._running = False
         self._receive_queue: asyncio.Queue[InputObject] = asyncio.Queue(
@@ -46,6 +48,7 @@ class InputReceiver:
 
         await self._clear_queue()
         self._keyboard_controller.close()
+        self._mouse_controller.close()
         logger.info("InputReceiver stopped.")
 
     async def receive_input(self, input_object: InputObject) -> None:
@@ -84,6 +87,8 @@ class InputReceiver:
         match event.type:
             case InputType.KEYBOARD:
                 self._keyboard_controller.apply(event)
+            case InputType.MOUSE:
+                self._mouse_controller.apply(event)
             case _:
                 logger.warning(f"[RECEIVER] Unhandled input event type: {event.type}")
 

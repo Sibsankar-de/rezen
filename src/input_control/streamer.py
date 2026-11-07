@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 
 from input_control.keyboard_capture import KeyboardCapture
+from input_control.mouse_capture import MouseCapture
 from models.input import InputObject
 from settings import settings
 from utils.logger import get_logger
@@ -18,6 +19,7 @@ class InputStreamer:
         self._send_task: asyncio.Task | None = None
 
         self._keyboard_capture = KeyboardCapture()
+        self._mouse_capture = MouseCapture()
         self._input_queue: asyncio.Queue[InputObject] = asyncio.Queue(
             maxsize=settings.INPUT_STREAM_QUEUE_MAX_SIZE
         )
@@ -30,10 +32,11 @@ class InputStreamer:
         self._running = True
         self._send = send
 
-        await self._keyboard_capture.start(enqueue=self._handle_keyboard_input)
+        await self._keyboard_capture.start(enqueue=self._enqueue_event)
+        await self._mouse_capture.start(enqueue=self._enqueue_event)
         self._send_task = asyncio.create_task(self._run_send_loop())
 
-        logger.info("Input streamer started. Capturing input events.")
+        logger.info("Input streamer started. Capturing keyboard and mouse events.")
 
     async def stop(self) -> None:
         """Stop the streamer"""
@@ -42,6 +45,7 @@ class InputStreamer:
 
         self._running = False
         await self._keyboard_capture.stop()
+        await self._mouse_capture.stop()
 
         if self._send_task is not None:
             self._send_task.cancel()
@@ -50,11 +54,11 @@ class InputStreamer:
 
         await self._clear_queue()
 
-    def _handle_keyboard_input(self, input_object: InputObject) -> None:
-        """Handle keyboard on press event"""
+    def _enqueue_event(self, input_object: InputObject) -> None:
+        """Enqueue a captured input event for sending."""
         try:
             self._input_queue.put_nowait(input_object)
-            logger.info(
+            logger.debug(
                 f"[STREAMER] Queued input event: {input_object.data} "
                 f"(pending in queue: {self._input_queue.qsize()})"
             )

@@ -276,14 +276,16 @@ async def test_input_streamer_and_receiver_flow():
     async def mock_send(event: InputObject):
         sent_events.append(event)
 
-    # Mock keyboard capture start/stop to avoid spawning a real listener thread
+    # Mock keyboard and mouse capture start/stop to avoid spawning real listener threads
     streamer._keyboard_capture.start = AsyncMock()
     streamer._keyboard_capture.stop = AsyncMock()
+    streamer._mouse_capture.start = AsyncMock()
+    streamer._mouse_capture.stop = AsyncMock()
 
     await streamer.start(mock_send)
 
     event1 = InputObject(type=InputType.KEYBOARD, data={"char:z"})
-    streamer._handle_keyboard_input(event1)
+    streamer._enqueue_event(event1)
     await asyncio.sleep(0.05)
 
     assert len(sent_events) == 1
