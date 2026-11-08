@@ -502,5 +502,96 @@ async def test_keyboard_capture_focus_gate():
     await kc.stop()
 
 
+@pytest.mark.asyncio
+async def test_mouse_capture_clicks_and_scrolls_inside_and_outside_video():
+    import asyncio
+    from pynput.mouse import Button
+    from input_control.mouse_capture import MouseCapture
+
+    class MockRenderer:
+        def __init__(self):
+            self.is_focused = True
+            self.window_geometry = (200, 150, 1000, 500)
+            self.source_size = (1920, 1080)
+
+    mc = MouseCapture()
+    captured = []
+
+    def mock_enqueue(event: InputObject):
+        captured.append(event)
+
+    renderer = MockRenderer()
+    await mc.start(mock_enqueue, renderer=renderer)
+
+    # Click outside video (e.g. at 50, 50) -> dropped
+    mc._on_pynput_click(50, 50, Button.left, True)
+    await asyncio.sleep(0.01)
+    assert len(captured) == 0
+
+    # Click inside video (e.g. at 700, 400 -> rel=(500, 250) -> scaled: 500*1920/1000=960, 250*1080/500=540)
+    mc._on_pynput_click(700, 400, Button.left, True)
+    await asyncio.sleep(0.01)
+    assert len(captured) == 2
+    assert captured[0].data == {"move_abs:960,540"}
+    assert captured[1].data == {"click:left:1"}
+
+    # Scroll outside video -> dropped
+    mc._on_pynput_scroll(100, 100, 0, 1)
+    await asyncio.sleep(0.01)
+    assert len(captured) == 2
+
+    # Scroll inside video
+    mc._on_pynput_scroll(700, 400, 0, 1)
+    await asyncio.sleep(0.01)
+    assert len(captured) == 3
+    assert captured[2].data == {"scroll:0,1"}
+
+    await mc.stop()
+
+
+@pytest.mark.asyncio
+async def test_mouse_capture_resizing_dynamic_scaling():
+    import asyncio
+    from input_control.mouse_capture import MouseCapture
+
+    class MockRenderer:
+        def __init__(self):
+            self.is_focused = True
+            self.window_geometry = (100, 100, 1000, 500)
+            self.source_size = (1920, 1080)
+
+    mc = MouseCapture()
+    captured = []
+
+    def mock_enqueue(event: InputObject):
+        captured.append(event)
+
+    renderer = MockRenderer()
+    await mc.start(mock_enqueue, renderer=renderer)
+
+    # Initial move: (600, 350) -> rel=(500, 250) -> host=(960, 540)
+    mc._on_pynput_move(600, 350)
+    await asyncio.sleep(0.01)
+    assert len(captured) == 1
+    assert captured[0].data == {"move_abs:960,540"}
+
+    # Resize window: video rendering rectangle becomes 2000x1000 at (50, 50)
+    renderer.window_geometry = (50, 50, 2000, 1000)
+    # Move: (1050, 550) -> rel=(1000, 500) -> host=(960, 540)
+    mc._on_pynput_move(1050, 550)
+    await asyncio.sleep(0.01)
+    assert len(captured) == 2
+    assert captured[1].data == {"move_abs:960,540"}
+
+    await mc.stop()
+
+
+def test_screen_renderer_is_focused_default_false():
+    from screen_cast.renderer import ScreenRenderer
+    renderer = ScreenRenderer()
+    assert renderer.is_focused is False
+
+
+
 
 

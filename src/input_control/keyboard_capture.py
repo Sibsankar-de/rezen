@@ -265,6 +265,10 @@ class KeyboardCapture:
                 logger.debug(f"[CAPTURE] Unmapped key release from {source}")
                 return
 
+            if self._renderer is not None and not self._renderer.is_focused:
+                self._pressed_keys.clear()
+                return
+
             self._pressed_keys.discard(normalized_key)
             logger.info(
                 f"[CAPTURE] [{self._backend}] Key released ({source}) -> norm='{normalized_key}' | "

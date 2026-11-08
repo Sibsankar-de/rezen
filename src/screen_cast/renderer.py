@@ -1,11 +1,17 @@
 import multiprocessing as mp
 import queue
 import subprocess
+import sys
 import time
 from typing import Any
 
 import cv2
 import numpy as np
+
+try:
+    from pynput._util.xorg import Xlib
+except ImportError:
+    Xlib = None
 
 from settings import settings
 from utils.logger import get_logger
@@ -14,7 +20,6 @@ from utils.multiprocessing_fix import apply_multiprocessing_fix
 apply_multiprocessing_fix()
 logger = get_logger(__name__)
 
-_FOCUS_POLL_INTERVAL = 10
 _GUI_NORMAL_FLAG = getattr(cv2, "WINDOW_GUI_NORMAL", 0)
 
 
@@ -29,11 +34,75 @@ def _is_window_open(window_name: str) -> bool:
         return False
 
 
-def _poll_window_state(window_name: str, win_geometry: Any, is_focused: Any) -> None:
+def _is_window_focused(window_name: str) -> bool:
+    """Check if the window titled window_name is currently focused."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            hwnd = ctypes.windll.user32.GetForegroundWindow()
+            if not hwnd:
+                return False
+            length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+            if length > 0:
+                buf = ctypes.create_unicode_buffer(length + 1)
+                ctypes.windll.user32.GetWindowTextW(hwnd, buf, length + 1)
+                return window_name in buf.value
+        except Exception:
+            return False
+        return False
+
+    xlib_display = None
+    if sys.platform.startswith("linux") and Xlib is not None:
+        try:
+            xlib_display = Xlib.display.Display()
+        except Exception:
+            xlib_display = None
+
+    if xlib_display is not None:
+        try:
+            xlib_display.sync()
+            w = xlib_display.get_input_focus().focus
+            while w:
+                name = getattr(w, "get_wm_name", lambda: None)()
+                if name and window_name in name:
+                    return True
+                tree_fn = getattr(w, "query_tree", None)
+                if not tree_fn:
+                    break
+                p = tree_fn().parent
+                if p == w or p is None:
+                    break
+                w = p
+        except Exception:
+            pass
+        return False
+
+    try:
+        result = subprocess.run(
+            ["xdotool", "getactivewindow", "getwindowname"],
+            capture_output=True,
+            text=True,
+            timeout=0.08,
+            check=False,
+        )
+        if result.returncode == 0 and window_name in result.stdout:
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
+def _poll_window_state(
+    window_name: str,
+    win_geometry: Any,
+    is_focused: Any,
+) -> None:
     """
     Query window content geometry and active focus state.
     Updates win_geometry[0..3] = (screen_x, screen_y, w, h) and is_focused.value.
-    Falls back to is_focused=1 if xdotool is unavailable.
+    Defaults to is_focused=0 if unconfirmed.
     """
     try:
         img_rect = cv2.getWindowImageRect(window_name)
@@ -46,18 +115,7 @@ def _poll_window_state(window_name: str, win_geometry: Any, is_focused: Any) -> 
         pass
 
     try:
-        result = subprocess.run(
-            ["xdotool", "getactivewindow", "getwindowname"],
-            capture_output=True,
-            text=True,
-            timeout=0.08,
-        )
-        if result.returncode == 0:
-            is_focused.value = int(window_name in result.stdout)
-        else:
-            is_focused.value = 0
-    except FileNotFoundError:
-        is_focused.value = 1
+        is_focused.value = int(_is_window_focused(window_name))
     except Exception:
         pass
 
@@ -75,7 +133,6 @@ def _render_process_entry(
     fully complying with Qt/X11 GUI main-thread restrictions.
     """
     window_created = False
-    focus_poll_counter = 0
     try:
         try:
             cv2.startWindowThread()
@@ -86,7 +143,6 @@ def _render_process_entry(
         cv2.resizeWindow(window_name, 960, 540)
         cv2.setMouseCallback(window_name, lambda *args: None)
         window_created = True
-        _poll_window_state(window_name, win_geometry, is_focused)
 
         placeholder = np.zeros((540, 960, 3), dtype=np.uint8)
         cv2.putText(
@@ -112,10 +168,12 @@ def _render_process_entry(
         cv2.imshow(window_name, placeholder)
         for _ in range(5):
             cv2.waitKey(20)
+        _poll_window_state(window_name, win_geometry, is_focused)
     except Exception as exc:
         logger.warning(f"Error creating window in renderer process: {exc}")
 
     start_time = time.time()
+    last_poll_time = time.monotonic()
     invisible_count = 0
     while not stop_event.is_set():
         try:
@@ -130,9 +188,9 @@ def _render_process_entry(
         except Exception as exc:
             logger.warning(f"Error displaying frame in renderer process: {exc}")
 
-        focus_poll_counter += 1
-        if focus_poll_counter >= _FOCUS_POLL_INTERVAL:
-            focus_poll_counter = 0
+        now = time.monotonic()
+        if now - last_poll_time >= 0.05:
+            last_poll_time = now
             _poll_window_state(window_name, win_geometry, is_focused)
 
         if time.time() - start_time > 3.0:
@@ -197,7 +255,7 @@ class ScreenRenderer:
     @property
     def is_focused(self) -> bool:
         if self._is_focused is None:
-            return True
+            return False
         return bool(self._is_focused.value)
 
     @property

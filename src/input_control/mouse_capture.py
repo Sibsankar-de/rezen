@@ -39,7 +39,7 @@ class MouseCapture:
         enqueue: Callable[[InputObject], Any],
         renderer: WindowContext | None = None,
     ) -> None:
-        """Start mouse capture using evdev if available, else pynput."""
+        """Start mouse capture using pynput (preferred) or evdev (fallback)."""
         if self._is_running():
             logger.info("MouseCapture is already running.")
             return
@@ -49,10 +49,18 @@ class MouseCapture:
         self._renderer = renderer
         session_type = self._log_environment()
 
+        try:
+            self._start_pynput(session_type)
+            return
+        except Exception as exc:
+            logger.warning(
+                f"Could not start pynput mouse listener ({exc}); falling back to evdev if available."
+            )
+
         if self._can_use_evdev() and self._start_evdev():
             return
 
-        self._start_pynput(session_type)
+        logger.error("Failed to start mouse capture: neither pynput nor evdev could be initialized.")
 
     async def stop(self) -> None:
         """Stop mouse capture."""
@@ -227,17 +235,22 @@ class MouseCapture:
 
     def _on_pynput_click(self, x: int, y: int, button: Button, pressed: bool) -> None:
         if self._renderer is not None:
+            if not self._renderer.is_focused:
+                return
             win_x, win_y, win_w, win_h = self._renderer.window_geometry
             if win_w > 0 and win_h > 0:
                 rel_x = x - win_x
                 rel_y = y - win_y
                 if rel_x < 0 or rel_x >= win_w or rel_y < 0 or rel_y >= win_h:
                     return
+                self._dispatch(f"move_abs:{x},{y}")
         btn_name = _PYNPUT_BTN_NAME.get(button, button.name)
         self._dispatch(f"click:{btn_name}:{1 if pressed else 0}")
 
     def _on_pynput_scroll(self, x: int, y: int, dx: int, dy: int) -> None:
         if self._renderer is not None:
+            if not self._renderer.is_focused:
+                return
             win_x, win_y, win_w, win_h = self._renderer.window_geometry
             if win_w > 0 and win_h > 0:
                 rel_x = x - win_x
