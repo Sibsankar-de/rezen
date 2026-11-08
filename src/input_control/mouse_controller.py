@@ -48,10 +48,18 @@ class MouseController:
         return session_type
 
     def _init_backend(self, session_type: str) -> None:
+        try:
+            self._init_pynput(session_type)
+            return
+        except Exception as exc:
+            logger.warning(
+                f"[CONTROLLER] Cannot initialize pynput mouse controller ({exc}). "
+                "Falling back to evdev UInput if available."
+            )
+
         if sys.platform.startswith("linux") and evdev is not None:
             if self._init_evdev():
                 return
-        self._init_pynput(session_type)
 
     def _init_evdev(self) -> bool:
         """Attempt to initialize an evdev UInput virtual mouse device."""
@@ -92,7 +100,7 @@ class MouseController:
                 "(then log out and back in, or run: sudo udevadm control --reload-rules && sudo udevadm trigger)\n"
                 "Falling back to pynput Controller."
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.warning(
                 f"[CONTROLLER] Unexpected error initializing evdev mouse UInput ({e}). "
                 "Falling back to pynput."
@@ -137,37 +145,27 @@ class MouseController:
 
     def _do_move(self, dx: int, dy: int) -> None:
         logger.debug(f"[CONTROLLER] Mouse move rel ({dx}, {dy}) via {self._backend}")
-        if self._backend == "evdev" and self._uinput is not None:
+        if self._mouse_controller is not None:
+            self._mouse_controller.move(dx, dy)
+        elif self._backend == "evdev" and self._uinput is not None:
             self._uinput.write(ecodes.EV_REL, ecodes.REL_X, dx)
             self._uinput.write(ecodes.EV_REL, ecodes.REL_Y, dy)
             self._uinput.syn()
-        elif self._mouse_controller is not None:
-            self._mouse_controller.move(dx, dy)
 
     def _do_move_abs(self, x: int, y: int) -> None:
         logger.debug(f"[CONTROLLER] Mouse move abs ({x}, {y}) via {self._backend}")
-        if self._backend == "evdev" and self._uinput is not None:
-            cur_x, cur_y = (
-                self._mouse_controller.position if self._mouse_controller else (0, 0)
-            )
-            self._uinput.write(ecodes.EV_REL, ecodes.REL_X, x - int(cur_x))
-            self._uinput.write(ecodes.EV_REL, ecodes.REL_Y, y - int(cur_y))
-            self._uinput.syn()
-        elif self._mouse_controller is not None:
+        if self._mouse_controller is not None:
             self._mouse_controller.position = (x, y)
+        elif self._backend == "evdev" and self._uinput is not None:
+            logger.warning(
+                f"[CONTROLLER] Cannot apply move_abs({x}, {y}) using evdev relative-only mouse."
+            )
 
     def _do_click(self, btn_name: str, pressed: bool) -> None:
         logger.debug(
             f"[CONTROLLER] Mouse {'press' if pressed else 'release'} {btn_name!r} via {self._backend}"
         )
-        if self._backend == "evdev" and self._uinput is not None:
-            code = _BTN_NAME_TO_EVDEV.get(btn_name)
-            if code is None:
-                logger.warning(f"[CONTROLLER] Unknown button for evdev: {btn_name!r}")
-                return
-            self._uinput.write(ecodes.EV_KEY, code, 1 if pressed else 0)
-            self._uinput.syn()
-        elif self._mouse_controller is not None:
+        if self._mouse_controller is not None:
             button = _BTN_NAME_TO_PYNPUT.get(btn_name)
             if button is None:
                 logger.warning(f"[CONTROLLER] Unknown button for pynput: {btn_name!r}")
@@ -176,17 +174,26 @@ class MouseController:
                 self._mouse_controller.press(button)
             else:
                 self._mouse_controller.release(button)
+            return
+
+        if self._backend == "evdev" and self._uinput is not None:
+            code = _BTN_NAME_TO_EVDEV.get(btn_name)
+            if code is None:
+                logger.warning(f"[CONTROLLER] Unknown button for evdev: {btn_name!r}")
+                return
+            self._uinput.write(ecodes.EV_KEY, code, 1 if pressed else 0)
+            self._uinput.syn()
 
     def _do_scroll(self, dx: int, dy: int) -> None:
         logger.debug(f"[CONTROLLER] Mouse scroll ({dx}, {dy}) via {self._backend}")
-        if self._backend == "evdev" and self._uinput is not None:
+        if self._mouse_controller is not None:
+            self._mouse_controller.scroll(dx, dy)
+        elif self._backend == "evdev" and self._uinput is not None:
             if dy != 0:
                 self._uinput.write(ecodes.EV_REL, ecodes.REL_WHEEL, dy)
             if dx != 0:
                 self._uinput.write(ecodes.EV_REL, ecodes.REL_HWHEEL, dx)
             self._uinput.syn()
-        elif self._mouse_controller is not None:
-            self._mouse_controller.scroll(dx, dy)
 
     def _close_uinput(self) -> None:
         if self._uinput is not None:

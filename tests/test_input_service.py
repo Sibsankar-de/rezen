@@ -592,6 +592,39 @@ def test_screen_renderer_is_focused_default_false():
     assert renderer.is_focused is False
 
 
+def test_mouse_controller_move_abs_and_click():
+    from unittest.mock import MagicMock
+    from pynput.mouse import Button
+    from input_control.mouse_controller import MouseController
+
+    mc = MouseController()
+    mock_pynput_ctrl = MagicMock()
+    mc._mouse_controller = mock_pynput_ctrl
+
+    # move_abs
+    event = InputObject(type=InputType.MOUSE, data={"move_abs:800,600"})
+    mc.apply(event)
+    assert mock_pynput_ctrl.position == (800, 600)
+
+    # click press
+    click_press = InputObject(type=InputType.MOUSE, data={"click:left:1"})
+    mc.apply(click_press)
+    mock_pynput_ctrl.press.assert_called_once_with(Button.left)
+
+    # click release
+    click_release = InputObject(type=InputType.MOUSE, data={"click:left:0"})
+    mc.apply(click_release)
+    mock_pynput_ctrl.release.assert_called_once_with(Button.left)
+
+    # scroll
+    scroll = InputObject(type=InputType.MOUSE, data={"scroll:0,-2"})
+    mc.apply(scroll)
+    mock_pynput_ctrl.scroll.assert_called_once_with(0, -2)
+
+    mc.close()
+
+
+
 
 
 
