@@ -624,6 +624,50 @@ def test_mouse_controller_move_abs_and_click():
     mc.close()
 
 
+def test_mouse_controller_uinput_delta_tracking():
+    from unittest.mock import MagicMock
+    from input_control.mouse_controller import MouseController
+
+    mc = MouseController()
+    mock_uinput = MagicMock()
+    mc._uinput = mock_uinput
+    mc._mouse_controller = None
+
+    # First event sets anchor
+    mc.apply(InputObject(type=InputType.MOUSE, data={"move_abs:500,300"}))
+    assert mock_uinput.write.call_count == 0
+
+    # Second event within threshold sends delta dx=5, dy=10
+    mc.apply(InputObject(type=InputType.MOUSE, data={"move_abs:505,310"}))
+    assert mock_uinput.write.call_count >= 2
+    mock_uinput.syn.assert_called()
+
+    mc.close()
+
+
+def test_renderer_is_window_focused_cached_display():
+    from unittest.mock import MagicMock, patch
+    import screen_cast.renderer as rend
+
+    mock_disp = MagicMock()
+    mock_focus = MagicMock()
+    mock_focus.focus.get_wm_name.return_value = "TestWindow"
+    mock_disp.get_input_focus.return_value = mock_focus
+
+    with patch.object(rend, "Xlib") as mock_xlib:
+        mock_xlib.display.Display.return_value = mock_disp
+        rend._xlib_display = None
+
+        res1 = rend._is_window_focused("TestWindow")
+        res2 = rend._is_window_focused("TestWindow")
+
+        assert res1 is True
+        assert res2 is True
+        # Display() should only be called once, not twice
+        assert mock_xlib.display.Display.call_count == 1
+
+
+
 
 
 

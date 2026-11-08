@@ -233,7 +233,7 @@ class KeyboardCapture:
         self._listner.stop()
         try:
             await asyncio.to_thread(self._listner.join, 0.5)
-        except Exception:  # noqa: BLE001
+        except Exception:   
             logger.debug("KeyboardCapture listener thread join timed out or failed.")
         self._listner = None
         logger.info("pynput KeyboardCapture listener stopped cleanly.")

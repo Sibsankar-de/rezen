@@ -34,8 +34,24 @@ def _is_window_open(window_name: str) -> bool:
         return False
 
 
+_xlib_display: Any = None
+
+
+def _get_xlib_display() -> Any:
+    """Return a cached Xlib Display connection, reconnecting if needed."""
+    global _xlib_display
+    if _xlib_display is None and sys.platform.startswith("linux") and Xlib is not None:
+        try:
+            _xlib_display = Xlib.display.Display()
+        except Exception:   
+            _xlib_display = None
+    return _xlib_display
+
+
 def _is_window_focused(window_name: str) -> bool:
     """Check if the window titled window_name is currently focused."""
+    global _xlib_display
+
     if sys.platform == "win32":
         try:
             import ctypes
@@ -52,17 +68,11 @@ def _is_window_focused(window_name: str) -> bool:
             return False
         return False
 
-    xlib_display = None
-    if sys.platform.startswith("linux") and Xlib is not None:
+    display = _get_xlib_display()
+    if display is not None:
         try:
-            xlib_display = Xlib.display.Display()
-        except Exception:
-            xlib_display = None
-
-    if xlib_display is not None:
-        try:
-            xlib_display.sync()
-            w = xlib_display.get_input_focus().focus
+            display.sync()
+            w = display.get_input_focus().focus
             while w:
                 name = getattr(w, "get_wm_name", lambda: None)()
                 if name and window_name in name:
@@ -74,8 +84,12 @@ def _is_window_focused(window_name: str) -> bool:
                 if p == w or p is None:
                     break
                 w = p
-        except Exception:
-            pass
+        except Exception:   
+            try:
+                display.close()
+            except Exception:   
+                pass
+            _xlib_display = None
         return False
 
     try:
@@ -88,7 +102,7 @@ def _is_window_focused(window_name: str) -> bool:
         )
         if result.returncode == 0 and window_name in result.stdout:
             return True
-    except Exception:
+    except Exception:   
         pass
 
     return False

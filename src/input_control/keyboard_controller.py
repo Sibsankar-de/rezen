@@ -88,7 +88,7 @@ class KeyboardController:
                 "(then log out and back in, or run: sudo udevadm control --reload-rules && sudo udevadm trigger)\n"
                 "Falling back to pynput Controller."
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:   
             logger.warning(
                 f"[CONTROLLER] Unexpected error initializing evdev UInput ({e}). "
                 "Falling back to pynput."

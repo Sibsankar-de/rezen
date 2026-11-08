@@ -266,7 +266,7 @@ class MouseCapture:
         self._listener.stop()
         try:
             await asyncio.to_thread(self._listener.join, 0.5)
-        except Exception:  # noqa: BLE001
+        except Exception:   
             logger.debug("MouseCapture listener thread join timed out or failed.")
         self._listener = None
         logger.info("pynput MouseCapture listener stopped.")
