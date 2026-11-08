@@ -3,6 +3,7 @@ from collections.abc import Awaitable, Callable
 
 from input_control.keyboard_capture import KeyboardCapture
 from input_control.mouse_capture import MouseCapture
+from input_control.window_context import WindowContext
 from models.input import InputObject
 from settings import settings
 from utils.logger import get_logger
@@ -24,7 +25,11 @@ class InputStreamer:
             maxsize=settings.INPUT_STREAM_QUEUE_MAX_SIZE
         )
 
-    async def start(self, send: Callable[[InputObject], Awaitable[None]]) -> None:
+    async def start(
+        self,
+        send: Callable[[InputObject], Awaitable[None]],
+        renderer: WindowContext | None = None,
+    ) -> None:
         """Start the capture loop and sending loop."""
         if self._running:
             return
@@ -32,8 +37,8 @@ class InputStreamer:
         self._running = True
         self._send = send
 
-        await self._keyboard_capture.start(enqueue=self._enqueue_event)
-        await self._mouse_capture.start(enqueue=self._enqueue_event)
+        await self._keyboard_capture.start(enqueue=self._enqueue_event, renderer=renderer)
+        await self._mouse_capture.start(enqueue=self._enqueue_event, renderer=renderer)
         self._send_task = asyncio.create_task(self._run_send_loop())
 
         logger.info("Input streamer started. Capturing keyboard and mouse events.")

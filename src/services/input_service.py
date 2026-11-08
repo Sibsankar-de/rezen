@@ -5,6 +5,7 @@ from protocol.packet import Packet, PacketType
 from protocol.connection_manager import ConnectionManager
 from input_control.streamer import InputStreamer
 from input_control.receiver import InputReceiver
+from input_control.window_context import WindowContext
 from services.connection_service import ConnectionService
 from services.device_service import DeviceService
 from utils.logger import get_logger
@@ -42,10 +43,10 @@ class InputService:
             self._input_receiver = InputReceiver()
         return self._input_receiver
 
-    async def start_streamer(self) -> None:
+    async def start_streamer(self, renderer: WindowContext | None = None) -> None:
         """Start the input streamer"""
         logger.info("Starting input streaming...")
-        await self.input_streamer.start(self._handle_send_event)
+        await self.input_streamer.start(self._handle_send_event, renderer=renderer)
 
     async def stop_streamer(self) -> None:
         """Stop the input streamer"""

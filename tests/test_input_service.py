@@ -72,7 +72,7 @@ async def test_start_and_stop_streamer(input_service_setup):
     service, _, _, _, streamer, _ = input_service_setup
 
     await service.start_streamer()
-    streamer.start.assert_awaited_once_with(service._handle_send_event)
+    streamer.start.assert_awaited_once_with(service._handle_send_event, renderer=None)
 
     await service.stop_streamer()
     streamer.stop.assert_awaited_once()
@@ -425,6 +425,82 @@ async def test_keyboard_capture_evdev_flow():
     await kc.stop()
     assert len(kc._evdev_tasks) == 0
     assert len(kc._evdev_devices) == 0
+
+
+@pytest.mark.asyncio
+async def test_mouse_capture_focus_gate_and_translation():
+    import asyncio
+    from input_control.mouse_capture import MouseCapture
+
+    class MockRenderer:
+        def __init__(self, focused=True, geom=(100, 100, 800, 600), src=(1600, 1200)):
+            self.is_focused = focused
+            self.window_geometry = geom
+            self.source_size = src
+
+    mc = MouseCapture()
+    captured = []
+
+    def mock_enqueue(event: InputObject):
+        captured.append(event)
+
+    renderer = MockRenderer(focused=True, geom=(100, 100, 800, 600), src=(1600, 1200))
+    await mc.start(mock_enqueue, renderer=renderer)
+
+    # In-bounds move_abs
+    # screen (500, 400) -> rel (400, 300) -> scaled: 400 * 1600 / 800 = 800, 300 * 1200 / 600 = 600
+    mc._on_pynput_move(500, 400)
+    await asyncio.sleep(0.01)
+    assert len(captured) == 1
+    assert captured[0].data == {"move_abs:800,600"}
+
+    # Out-of-bounds move_abs (screen 50, 50 is outside window at 100, 100)
+    mc._on_pynput_move(50, 50)
+    await asyncio.sleep(0.01)
+    assert len(captured) == 1
+
+    # Unfocused -> drop all events
+    renderer.is_focused = False
+    mc._on_pynput_move(500, 400)
+    await asyncio.sleep(0.01)
+    assert len(captured) == 1
+
+    await mc.stop()
+
+
+@pytest.mark.asyncio
+async def test_keyboard_capture_focus_gate():
+    import asyncio
+    from input_control.keyboard_capture import KeyboardCapture
+
+    class MockRenderer:
+        def __init__(self, focused=True):
+            self.is_focused = focused
+            self.window_geometry = (0, 0, 800, 600)
+            self.source_size = (1280, 720)
+
+    kc = KeyboardCapture()
+    captured = []
+
+    def mock_enqueue(event: InputObject):
+        captured.append(event)
+
+    renderer = MockRenderer(focused=False)
+    await kc.start(mock_enqueue, renderer=renderer)
+
+    # Press while unfocused -> dropped
+    kc._handle_key_press("char:a", "test")
+    assert len(captured) == 0
+
+    # Focus window
+    renderer.is_focused = True
+    kc._handle_key_press("char:a", "test")
+    await asyncio.sleep(0.01)
+    assert len(captured) == 1
+    assert "char:a" in captured[0].data
+
+    await kc.stop()
+
 
 
 

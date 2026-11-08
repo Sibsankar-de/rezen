@@ -227,6 +227,10 @@ def test_screen_renderer_lifecycle():
 
         frame = np.zeros((10, 10, 3), dtype=np.uint8)
         assert renderer.display(frame) is True
+        assert renderer.source_size == (10, 10)
+        assert isinstance(renderer.window_geometry, tuple)
+        assert len(renderer.window_geometry) == 4
+        assert isinstance(renderer.is_focused, bool)
 
         renderer.close()
         assert renderer.isClosed is True

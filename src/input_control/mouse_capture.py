@@ -14,7 +14,9 @@ except ImportError:
 
 from pynput.mouse import Button, Listener
 
+from input_control.window_context import WindowContext
 from models.input import InputObject, InputType
+from settings import settings
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -30,8 +32,13 @@ class MouseCapture:
         self._evdev_devices: list[Any] = []
         self._evdev_tasks: list[asyncio.Task] = []
         self._backend: str | None = None
+        self._renderer: WindowContext | None = None
 
-    async def start(self, enqueue: Callable[[InputObject], Any]) -> None:
+    async def start(
+        self,
+        enqueue: Callable[[InputObject], Any],
+        renderer: WindowContext | None = None,
+    ) -> None:
         """Start mouse capture using evdev if available, else pynput."""
         if self._is_running():
             logger.info("MouseCapture is already running.")
@@ -39,6 +46,7 @@ class MouseCapture:
 
         self._loop = asyncio.get_running_loop()
         self._enqueue = enqueue
+        self._renderer = renderer
         session_type = self._log_environment()
 
         if self._can_use_evdev() and self._start_evdev():
@@ -218,10 +226,24 @@ class MouseCapture:
         self._dispatch(f"move_abs:{x},{y}")
 
     def _on_pynput_click(self, x: int, y: int, button: Button, pressed: bool) -> None:
+        if self._renderer is not None:
+            win_x, win_y, win_w, win_h = self._renderer.window_geometry
+            if win_w > 0 and win_h > 0:
+                rel_x = x - win_x
+                rel_y = y - win_y
+                if rel_x < 0 or rel_x >= win_w or rel_y < 0 or rel_y >= win_h:
+                    return
         btn_name = _PYNPUT_BTN_NAME.get(button, button.name)
         self._dispatch(f"click:{btn_name}:{1 if pressed else 0}")
 
     def _on_pynput_scroll(self, x: int, y: int, dx: int, dy: int) -> None:
+        if self._renderer is not None:
+            win_x, win_y, win_w, win_h = self._renderer.window_geometry
+            if win_w > 0 and win_h > 0:
+                rel_x = x - win_x
+                rel_y = y - win_y
+                if rel_x < 0 or rel_x >= win_w or rel_y < 0 or rel_y >= win_h:
+                    return
         self._dispatch(f"scroll:{dx},{dy}")
 
     async def _stop_pynput(self) -> None:
@@ -237,12 +259,66 @@ class MouseCapture:
         logger.info("pynput MouseCapture listener stopped.")
 
     def _dispatch(self, encoded: str) -> None:
-        """Send a mouse event string to the consumer callback."""
+        """Gate on window focus, translate coordinates, then enqueue the event."""
         if self._loop is None or self._loop.is_closed() or self._enqueue is None:
             return
 
-        event = InputObject(type=InputType.MOUSE, data={encoded})
+        if self._renderer is not None and not self._renderer.is_focused:
+            return
+
+        translated = self._translate(encoded)
+        if translated is None:
+            return
+
+        event = InputObject(type=InputType.MOUSE, data={translated})
         self._loop.call_soon_threadsafe(self._enqueue, event)
+
+    def _translate(self, encoded: str) -> str | None:
+        """
+        Remap mouse coordinates from viewer window space to host screen space.
+        Returns None when the event should be dropped (e.g. zero-delta after scaling).
+        """
+        if self._renderer is None:
+            return encoded
+
+        win_x, win_y, win_w, win_h = self._renderer.window_geometry
+        if hasattr(self._renderer, "source_size"):
+            host_w, host_h = self._renderer.source_size
+        else:
+            host_w = settings.SCREEN_CAPTURE_MAX_WIDTH
+            host_h = settings.SCREEN_CAPTURE_MAX_HEIGHT
+
+        if win_w <= 0 or win_h <= 0:
+            return encoded
+
+        kind, _, rest = encoded.partition(":")
+
+        if kind == "move_abs":
+            screen_x, screen_y = _parse_int_pair(rest)
+            rel_x = screen_x - win_x
+            rel_y = screen_y - win_y
+            if rel_x < 0 or rel_x >= win_w or rel_y < 0 or rel_y >= win_h:
+                return None
+            host_x = max(0, min(host_w - 1, int(rel_x * host_w / win_w)))
+            host_y = max(0, min(host_h - 1, int(rel_y * host_h / win_h)))
+            return f"move_abs:{host_x},{host_y}"
+
+        if kind == "move":
+            dx, dy = _parse_int_pair(rest)
+            scale_x = host_w / win_w
+            scale_y = host_h / win_h
+            sdx = int(dx * scale_x)
+            sdy = int(dy * scale_y)
+            if sdx == 0 and sdy == 0:
+                return None
+            return f"move:{sdx},{sdy}"
+
+        return encoded
+
+
+def _parse_int_pair(s: str) -> tuple[int, int]:
+    a, _, b = s.partition(",")
+    return int(a), int(b)
 
 
 _EVDEV_BTN_MAP: dict[int, str] = {}

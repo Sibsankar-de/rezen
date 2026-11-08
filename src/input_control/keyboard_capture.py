@@ -15,6 +15,7 @@ except ImportError:
 from pynput.keyboard import Key, KeyCode, Listener
 
 from input_control.normalizer import KeyNormalizer
+from input_control.window_context import WindowContext
 from models.input import InputObject, InputType
 from utils.logger import get_logger
 
@@ -32,8 +33,13 @@ class KeyboardCapture:
         self._evdev_tasks: list[asyncio.Task] = []
         self._pressed_keys: set[str] = set()
         self._backend: str | None = None
+        self._renderer: WindowContext | None = None
 
-    async def start(self, enqueue: Callable[[InputObject], Any]) -> None:
+    async def start(
+        self,
+        enqueue: Callable[[InputObject], Any],
+        renderer: WindowContext | None = None,
+    ) -> None:
         """Start the keyboard listener using evdev if available, else pynput."""
         if self._is_running():
             logger.info("KeyboardCapture is already running.")
@@ -41,6 +47,7 @@ class KeyboardCapture:
 
         self._loop = asyncio.get_running_loop()
         self._enqueue = enqueue
+        self._renderer = renderer
         session_type = self._log_environment()
 
         if self._can_use_evdev() and self._start_evdev():
@@ -236,6 +243,10 @@ class KeyboardCapture:
         try:
             if not normalized_key:
                 logger.debug(f"[CAPTURE] Unmapped key press from {source}")
+                return
+
+            if self._renderer is not None and not self._renderer.is_focused:
+                self._pressed_keys.clear()
                 return
 
             self._pressed_keys.add(normalized_key)
