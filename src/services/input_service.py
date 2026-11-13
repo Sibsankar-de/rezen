@@ -95,27 +95,27 @@ class InputService:
             self._input_receiver = None
         logger.info("Input receiver stopped cleanly.")
 
-    async def _handle_input_packet(
-        self, connection: Connection, packet: Packet
-    ) -> None:
-        """Handle incoming input packets"""
-        if not packet or packet.type != PacketType.INPUT_EVENT:
-            return
+    def _verify_connection_packet(
+        self,
+        connection: Connection,
+        packet: Packet | None,
+        expected_type: PacketType | None = None,
+    ) -> bool:
+        """Validate that a packet exists, matches expected type, and belongs to the active connection."""
+        if not packet:
+            return False
 
-        conn_dev_id = getattr(connection, "device_id", None)
-        logger.info(
-            f"[SERVICE] Incoming INPUT_EVENT packet on connection {connection.id} "
-            f"(device: {conn_dev_id})"
-        )
+        if expected_type is not None and packet.type != expected_type:
+            return False
 
         latest = self._connection_service.latest_connection
         if not latest:
             logger.warning(
-                f"[SERVICE] Received INPUT_EVENT on {connection.id} but no active latest_connection. "
-                f"Dropping packet."
+                f"[SERVICE] Received {packet.type} on {connection.id} but no active latest_connection. Dropping."
             )
-            return
+            return False
 
+        conn_dev_id = getattr(connection, "device_id", None)
         latest_dev_id = getattr(latest, "device_id", None)
         if latest.id != connection.id and (
             not conn_dev_id or conn_dev_id != latest_dev_id
@@ -124,7 +124,22 @@ class InputService:
                 f"[SERVICE] Ignoring packet from connection {connection.id} (device {conn_dev_id}): "
                 f"does not match active latest connection {latest.id} (device {latest_dev_id})"
             )
+            return False
+
+        return True
+
+    async def _handle_input_packet(
+        self, connection: Connection, packet: Packet
+    ) -> None:
+        """Handle incoming input packets"""
+        if not self._verify_connection_packet(connection, packet, PacketType.INPUT_EVENT):
             return
+
+        conn_dev_id = getattr(connection, "device_id", None)
+        logger.info(
+            f"[SERVICE] Incoming INPUT_EVENT packet on connection {connection.id} "
+            f"(device: {conn_dev_id})"
+        )
 
         if not packet.payload:
             logger.warning(

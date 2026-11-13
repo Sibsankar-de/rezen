@@ -419,3 +419,57 @@ def test_pipewire_requires_system_python_with_bindings():
                 PipeWireScreenCapture()
 
     assert callable(find_system_python)
+
+
+def test_screen_renderer_set_host_resolution_precedence():
+    with patch("cv2.namedWindow"), patch("cv2.imshow"), patch("cv2.waitKey", return_value=0), patch(
+        "cv2.getWindowProperty", return_value=1.0
+    ), patch("cv2.destroyWindow"):
+        renderer = ScreenRenderer()
+        renderer.start()
+
+        # Before setting host resolution, frame shape updates source_size
+        frame1 = np.zeros((720, 1280, 3), dtype=np.uint8)
+        renderer.display(frame1)
+        assert renderer.source_size == (1280, 720)
+
+        # Explicit host resolution takes precedence
+        renderer.set_host_resolution(1920, 1080)
+        assert renderer.source_size == (1920, 1080)
+
+        # Subsequent downscaled frames do NOT overwrite host resolution
+        frame2 = np.zeros((360, 640, 3), dtype=np.uint8)
+        renderer.display(frame2)
+        assert renderer.source_size == (1920, 1080)
+
+        renderer.close()
+
+
+def test_receiver_set_host_resolution():
+    with patch("cv2.namedWindow"), patch("cv2.imshow"), patch("cv2.waitKey", return_value=0), patch(
+        "cv2.getWindowProperty", return_value=1.0
+    ), patch("cv2.destroyWindow"):
+        receiver = Receiver()
+        receiver.set_host_resolution(2560, 1440)
+        assert receiver.renderer.source_size == (2560, 1440)
+
+
+def test_capture_and_streamer_screen_size():
+    from screen_cast.capture import ScreenCapture, get_system_screen_size
+    from screen_cast.streamer import Streamer
+
+    mock_sct = MagicMock()
+    mock_sct.__enter__.return_value = mock_sct
+    mock_sct.monitors = [
+        {"top": 0, "left": 0, "width": 1920, "height": 1080},
+        {"top": 0, "left": 0, "width": 1920, "height": 1080, "is_primary": True},
+    ]
+    with patch("mss.MSS", return_value=mock_sct):
+        cap = ScreenCapture(monitor=1)
+        assert cap.screen_size == (1920, 1080)
+
+        streamer = Streamer(capture=cap)
+        assert streamer.screen_size == (1920, 1080)
+
+        assert get_system_screen_size() == (1920, 1080)
+        cap.close()

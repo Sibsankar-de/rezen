@@ -70,6 +70,7 @@ class Receiver:
         self._buffer = buffer or FrameBuffer()
         self._decoder = decoder
         self._renderer = renderer
+        self._host_resolution: tuple[int, int] | None = None
 
         self._received_chunks = 0
         self._assembled_frames = 0
@@ -77,6 +78,12 @@ class Receiver:
         self._displayed_frames = 0
         self._bytes_received = 0
         self._stats_started_at: float | None = None
+
+    def set_host_resolution(self, width: int, height: int) -> None:
+        """Set the host screen resolution and forward to the renderer."""
+        self._host_resolution = (width, height)
+        if self._renderer is not None:
+            self._renderer.set_host_resolution(width, height)
 
     @property
     def decoder(self) -> H264Decoder:
@@ -88,6 +95,8 @@ class Receiver:
     def renderer(self) -> ScreenRenderer:
         if self._renderer is None:
             self._renderer = ScreenRenderer()
+            if self._host_resolution is not None:
+                self._renderer.set_host_resolution(*self._host_resolution)
         return self._renderer
 
     async def start(self) -> None:

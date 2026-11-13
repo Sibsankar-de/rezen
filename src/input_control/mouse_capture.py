@@ -312,16 +312,20 @@ class MouseCapture:
             rel_y = screen_y - win_y
             if rel_x < 0 or rel_x >= win_w or rel_y < 0 or rel_y >= win_h:
                 return None
-            host_x = max(0, min(host_w - 1, int(rel_x * host_w / win_w)))
-            host_y = max(0, min(host_h - 1, int(rel_y * host_h / win_h)))
+            host_x = max(0, min(host_w - 1, round(rel_x * host_w / win_w)))
+            host_y = max(0, min(host_h - 1, round(rel_y * host_h / win_h)))
             return f"move_abs:{host_x},{host_y}"
 
         if kind == "move":
             dx, dy = _parse_int_pair(rest)
             scale_x = host_w / win_w
             scale_y = host_h / win_h
-            sdx = int(dx * scale_x)
-            sdy = int(dy * scale_y)
+            sdx = round(dx * scale_x)
+            sdy = round(dy * scale_y)
+            if dx != 0 and sdx == 0:
+                sdx = 1 if dx > 0 else -1
+            if dy != 0 and sdy == 0:
+                sdy = 1 if dy > 0 else -1
             if sdx == 0 and sdy == 0:
                 return None
             return f"move:{sdx},{sdy}"

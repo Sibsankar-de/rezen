@@ -69,6 +69,13 @@ class Streamer:
         return self._capture
 
     @property
+    def screen_size(self) -> tuple[int, int]:
+        try:
+            return self.capture.screen_size
+        except Exception:
+            return (self.capture.width, self.capture.height)
+
+    @property
     def encoder(self) -> H264Encoder:
         if self._encoder is None:
             self._encoder = H264Encoder(self.capture.width, self.capture.height)

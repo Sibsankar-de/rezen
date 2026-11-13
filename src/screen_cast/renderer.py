@@ -241,6 +241,14 @@ class ScreenRenderer:
             settings.SCREEN_CAPTURE_MAX_WIDTH,
             settings.SCREEN_CAPTURE_MAX_HEIGHT,
         )
+        self._has_host_resolution = False
+
+    def set_host_resolution(self, width: int, height: int) -> None:
+        """Set the authoritative host screen dimensions for coordinate mapping."""
+        if width > 0 and height > 0:
+            self._source_size = (int(width), int(height))
+            self._has_host_resolution = True
+            logger.info(f"ScreenRenderer host screen resolution set to {width}x{height}.")
 
     @property
     def isClosed(self) -> bool:
@@ -310,7 +318,7 @@ class ScreenRenderer:
         if self.isClosed or self._queue is None:
             return False
 
-        if frame is not None and getattr(frame, "ndim", 0) >= 2:
+        if not self._has_host_resolution and frame is not None and getattr(frame, "ndim", 0) >= 2:
             self._source_size = (int(frame.shape[1]), int(frame.shape[0]))
 
         if self._queue.full():

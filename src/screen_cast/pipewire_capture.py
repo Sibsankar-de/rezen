@@ -376,6 +376,10 @@ class PipeWireScreenCapture:
     def info(self) -> ScreenInfo:
         return ScreenInfo(width=self._width, height=self._height)
 
+    @property
+    def screen_size(self) -> tuple[int, int]:
+        return (self._source_width, self._source_height)
+
     def capture(self) -> np.ndarray:
         """Return the newest frame.
 

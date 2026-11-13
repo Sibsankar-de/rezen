@@ -17,6 +17,8 @@ class PacketType(StrEnum):
 
     SCREEN_FRAME_CHUNK = "screen_frame_chunk"
     INPUT_EVENT = "input_event"
+    SCREEN_INFO = "screen_info"
+    SCREEN_INFO_REQUEST = "screen_info_request"
 
 
 @dataclass(slots=True)

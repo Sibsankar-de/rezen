@@ -667,6 +667,72 @@ def test_renderer_is_window_focused_cached_display():
         assert mock_xlib.display.Display.call_count == 1
 
 
+@pytest.mark.asyncio
+async def test_mouse_capture_accurate_boundary_calibration():
+    import asyncio
+    from input_control.mouse_capture import MouseCapture
+
+    class MockRenderer:
+        def __init__(self):
+            self.is_focused = True
+            self.window_geometry = (100, 100, 960, 540)
+            self.source_size = (1920, 1080)
+
+    mc = MouseCapture()
+    captured = []
+
+    def mock_enqueue(event: InputObject):
+        captured.append(event)
+
+    renderer = MockRenderer()
+    await mc.start(mock_enqueue, renderer=renderer)
+
+    # Top-left corner
+    mc._on_pynput_move(100, 100)
+    await asyncio.sleep(0.01)
+    assert captured[-1].data == {"move_abs:0,0"}
+
+    # Center of video
+    mc._on_pynput_move(100 + 480, 100 + 270)
+    await asyncio.sleep(0.01)
+    assert captured[-1].data == {"move_abs:960,540"}
+
+    # Bottom-right inside video
+    mc._on_pynput_move(100 + 959, 100 + 539)
+    await asyncio.sleep(0.01)
+    assert captured[-1].data == {"move_abs:1918,1078"}
+
+    # Right outside video
+    mc._on_pynput_move(100 + 960, 100 + 539)
+    await asyncio.sleep(0.01)
+    assert len(captured) == 3
+
+    await mc.stop()
+
+
+def test_mouse_capture_relative_move_subpixel_sensitivity():
+    from input_control.mouse_capture import MouseCapture
+
+    class MockRenderer:
+        def __init__(self):
+            self.is_focused = True
+            self.window_geometry = (0, 0, 1920, 1080)
+            self.source_size = (960, 540)
+
+    mc = MouseCapture()
+    mc._renderer = MockRenderer()
+
+    # Scaling down 0.5x: dx=1 should preserve minimum movement dx=1, not 0
+    res = mc._translate("move:1,0")
+    assert res == "move:1,0"
+
+    res_neg = mc._translate("move:-1,0")
+    assert res_neg == "move:-1,0"
+
+    res_y = mc._translate("move:0,1")
+    assert res_y == "move:0,1"
+
+
 
 
 
