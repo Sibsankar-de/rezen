@@ -598,6 +598,7 @@ def test_mouse_controller_move_abs_and_click():
     from input_control.mouse_controller import MouseController
 
     mc = MouseController()
+    mc._uinput = None
     mock_pynput_ctrl = MagicMock()
     mc._mouse_controller = mock_pynput_ctrl
 
@@ -624,6 +625,26 @@ def test_mouse_controller_move_abs_and_click():
     mc.close()
 
 
+def test_mouse_controller_uinput_absolute_positioning():
+    from unittest.mock import MagicMock
+    from input_control.mouse_controller import MouseController
+    from evdev import ecodes
+
+    mc = MouseController()
+    mock_uinput = MagicMock()
+    mc._uinput = mock_uinput
+    mc._has_abs = True
+    mc.set_screen_size(1920, 1080)
+
+    mc.apply(InputObject(type=InputType.MOUSE, data={"move_abs:800,600"}))
+    assert mock_uinput.write.call_count == 2
+    mock_uinput.write.assert_any_call(ecodes.EV_ABS, ecodes.ABS_X, 800)
+    mock_uinput.write.assert_any_call(ecodes.EV_ABS, ecodes.ABS_Y, 600)
+    mock_uinput.syn.assert_called()
+
+    mc.close()
+
+
 def test_mouse_controller_uinput_delta_tracking():
     from unittest.mock import MagicMock
     from input_control.mouse_controller import MouseController
@@ -632,6 +653,7 @@ def test_mouse_controller_uinput_delta_tracking():
     mock_uinput = MagicMock()
     mc._uinput = mock_uinput
     mc._mouse_controller = None
+    mc._has_abs = False
 
     # First event sets anchor
     mc.apply(InputObject(type=InputType.MOUSE, data={"move_abs:500,300"}))
@@ -700,7 +722,7 @@ async def test_mouse_capture_accurate_boundary_calibration():
     # Bottom-right inside video
     mc._on_pynput_move(100 + 959, 100 + 539)
     await asyncio.sleep(0.01)
-    assert captured[-1].data == {"move_abs:1918,1078"}
+    assert captured[-1].data == {"move_abs:1919,1079"}
 
     # Right outside video
     mc._on_pynput_move(100 + 960, 100 + 539)

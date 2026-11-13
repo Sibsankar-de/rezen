@@ -29,8 +29,27 @@ class MouseController:
         self._last_x: int | None = None
         self._last_y: int | None = None
         self._last_time: float = 0.0
+        self._has_abs = False
+        max_w, max_h = self._get_screen_bounds()
+        self._screen_max_x = max(1, max_w - 1)
+        self._screen_max_y = max(1, max_h - 1)
 
         self._init_backend(session_type)
+
+    @staticmethod
+    def _get_screen_bounds() -> tuple[int, int]:
+        try:
+            from screen_cast.capture import get_system_screen_size
+
+            return get_system_screen_size()
+        except Exception:
+            return (1920, 1080)
+
+    def set_screen_size(self, width: int, height: int) -> None:
+        """Update maximum screen coordinate bounds for absolute pointer injection."""
+        if width > 0 and height > 0:
+            self._screen_max_x = max(1, width - 1)
+            self._screen_max_y = max(1, height - 1)
 
     def apply(self, input_object: InputObject) -> None:
         """Apply a mouse event encoded in input_object.data."""
@@ -63,12 +82,10 @@ class MouseController:
         if sys.platform.startswith("linux") and evdev is not None:
             self._init_evdev()
 
-        if self._mouse_controller is not None and self._uinput is not None:
-            self._backend = "pynput+evdev"
+        if self._uinput is not None:
+            self._backend = "evdev"
         elif self._mouse_controller is not None:
             self._backend = "pynput"
-        elif self._uinput is not None:
-            self._backend = "evdev"
         else:
             self._backend = "none"
 
@@ -81,7 +98,31 @@ class MouseController:
             "_UInputError", (Exception,), {}
         )
 
-        events = {
+        events: dict[int, Any] = {
+            ecodes.EV_ABS: [
+                (
+                    ecodes.ABS_X,
+                    evdev.AbsInfo(
+                        value=0,
+                        min=0,
+                        max=self._screen_max_x,
+                        fuzz=0,
+                        flat=0,
+                        resolution=1,
+                    ),
+                ),
+                (
+                    ecodes.ABS_Y,
+                    evdev.AbsInfo(
+                        value=0,
+                        min=0,
+                        max=self._screen_max_y,
+                        fuzz=0,
+                        flat=0,
+                        resolution=1,
+                    ),
+                ),
+            ],
             ecodes.EV_REL: [
                 ecodes.REL_X,
                 ecodes.REL_Y,
@@ -94,12 +135,19 @@ class MouseController:
                 ecodes.BTN_MIDDLE,
             ],
         }
+        props = (
+            [ecodes.INPUT_PROP_POINTER] if hasattr(ecodes, "INPUT_PROP_POINTER") else []
+        )
 
         try:
-            self._uinput = evdev.UInput(events=events, name="rezen-virtual-mouse")
-            self._backend = "evdev"
+            self._uinput = evdev.UInput(
+                events=events,
+                input_props=props,
+                name="rezen-virtual-mouse",
+            )
+            self._has_abs = True
             logger.info(
-                "[CONTROLLER] Successfully initialized evdev UInput virtual mouse device."
+                f"[CONTROLLER] Successfully initialized evdev absolute pointer device ({self._screen_max_x + 1}x{self._screen_max_y + 1})."
             )
             return True
         except (PermissionError, OSError, _UInputError) as e:
@@ -156,26 +204,32 @@ class MouseController:
 
     def _do_move(self, dx: int, dy: int) -> None:
         logger.debug(f"[CONTROLLER] Mouse move rel ({dx}, {dy}) via {self._backend}")
-        if self._mouse_controller is not None:
+        if self._uinput is not None and ecodes is not None:
+            self._uinput.write(ecodes.EV_REL, ecodes.REL_X, dx)
+            self._uinput.write(ecodes.EV_REL, ecodes.REL_Y, dy)
+            self._uinput.syn()
+        elif self._mouse_controller is not None:
             try:
                 self._mouse_controller.move(dx, dy)
             except Exception:
                 pass
 
-        if self._uinput is not None and ecodes is not None:
-            self._uinput.write(ecodes.EV_REL, ecodes.REL_X, dx)
-            self._uinput.write(ecodes.EV_REL, ecodes.REL_Y, dy)
-            self._uinput.syn()
-
     def _do_move_abs(self, x: int, y: int) -> None:
         logger.debug(f"[CONTROLLER] Mouse move abs ({x}, {y}) via {self._backend}")
-        if self._mouse_controller is not None:
-            try:
-                self._mouse_controller.position = (x, y)
-            except Exception:
-                pass
-
         if self._uinput is not None and ecodes is not None:
+            has_abs = getattr(self, "_has_abs", False)
+            if not has_abs:
+                caps = getattr(self._uinput, "capabilities", dict)()
+                has_abs = ecodes.EV_ABS in caps
+
+            if has_abs:
+                clamped_x = max(0, min(self._screen_max_x, x))
+                clamped_y = max(0, min(self._screen_max_y, y))
+                self._uinput.write(ecodes.EV_ABS, ecodes.ABS_X, clamped_x)
+                self._uinput.write(ecodes.EV_ABS, ecodes.ABS_Y, clamped_y)
+                self._uinput.syn()
+                return
+
             now = time.monotonic()
             if (
                 self._last_x is not None
@@ -191,12 +245,24 @@ class MouseController:
             self._last_x = x
             self._last_y = y
             self._last_time = now
+            return
+
+        if self._mouse_controller is not None:
+            try:
+                self._mouse_controller.position = (x, y)
+            except Exception:
+                pass
 
     def _do_click(self, btn_name: str, pressed: bool) -> None:
         logger.debug(
             f"[CONTROLLER] Mouse {'press' if pressed else 'release'} {btn_name!r} via {self._backend}"
         )
-        if self._mouse_controller is not None:
+        if self._uinput is not None and ecodes is not None:
+            code = _BTN_NAME_TO_EVDEV.get(btn_name)
+            if code is not None:
+                self._uinput.write(ecodes.EV_KEY, code, 1 if pressed else 0)
+                self._uinput.syn()
+        elif self._mouse_controller is not None:
             button = _BTN_NAME_TO_PYNPUT.get(btn_name)
             if button is not None:
                 try:
@@ -207,26 +273,19 @@ class MouseController:
                 except Exception:
                     pass
 
-        if self._uinput is not None and ecodes is not None:
-            code = _BTN_NAME_TO_EVDEV.get(btn_name)
-            if code is not None:
-                self._uinput.write(ecodes.EV_KEY, code, 1 if pressed else 0)
-                self._uinput.syn()
-
     def _do_scroll(self, dx: int, dy: int) -> None:
         logger.debug(f"[CONTROLLER] Mouse scroll ({dx}, {dy}) via {self._backend}")
-        if self._mouse_controller is not None:
-            try:
-                self._mouse_controller.scroll(dx, dy)
-            except Exception:
-                pass
-
         if self._uinput is not None and ecodes is not None:
             if dy != 0:
                 self._uinput.write(ecodes.EV_REL, ecodes.REL_WHEEL, dy)
             if dx != 0:
                 self._uinput.write(ecodes.EV_REL, ecodes.REL_HWHEEL, dx)
             self._uinput.syn()
+        elif self._mouse_controller is not None:
+            try:
+                self._mouse_controller.scroll(dx, dy)
+            except Exception:
+                pass
 
     def _close_uinput(self) -> None:
         if self._uinput is not None:

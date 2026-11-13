@@ -473,3 +473,37 @@ def test_capture_and_streamer_screen_size():
 
         assert get_system_screen_size() == (1920, 1080)
         cap.close()
+
+
+def test_screen_renderer_disable_mousewheel_zoom():
+    from unittest.mock import MagicMock, patch
+
+    from screen_cast.renderer import _disable_mousewheel_zoom, _disable_x11_mousewheel
+
+    mock_win = MagicMock()
+    mock_child = MagicMock()
+    mock_tree = MagicMock()
+    mock_tree.children = [mock_child]
+    mock_win.query_tree.return_value = mock_tree
+    mock_child.query_tree.return_value = MagicMock(children=[])
+
+    _disable_x11_mousewheel(mock_win)
+    # Buttons 4, 5, 6, 7 grabbed on window and child
+    assert mock_win.grab_button.call_count == 4
+    assert mock_child.grab_button.call_count == 4
+
+    # Test _disable_mousewheel_zoom finding window in tree
+    mock_display = MagicMock()
+    mock_root = MagicMock()
+    mock_display.screen.return_value.root = mock_root
+    mock_root.get_wm_name.return_value = "Root"
+    mock_target = MagicMock()
+    mock_target.get_wm_name.return_value = "TestWindow"
+    mock_target.query_tree.return_value = MagicMock(children=[])
+    mock_root.query_tree.return_value = MagicMock(children=[mock_target])
+
+    with patch("screen_cast.renderer._get_xlib_display", return_value=mock_display), patch("sys.platform", "linux"):
+        res = _disable_mousewheel_zoom("TestWindow")
+        assert res is True
+        assert mock_target.grab_button.call_count == 4
+

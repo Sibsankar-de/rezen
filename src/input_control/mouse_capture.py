@@ -60,7 +60,9 @@ class MouseCapture:
         if self._can_use_evdev() and self._start_evdev():
             return
 
-        logger.error("Failed to start mouse capture: neither pynput nor evdev could be initialized.")
+        logger.error(
+            "Failed to start mouse capture: neither pynput nor evdev could be initialized."
+        )
 
     async def stop(self) -> None:
         """Stop mouse capture."""
@@ -266,7 +268,7 @@ class MouseCapture:
         self._listener.stop()
         try:
             await asyncio.to_thread(self._listener.join, 0.5)
-        except Exception:   
+        except Exception:
             logger.debug("MouseCapture listener thread join timed out or failed.")
         self._listener = None
         logger.info("pynput MouseCapture listener stopped.")
@@ -312,8 +314,14 @@ class MouseCapture:
             rel_y = screen_y - win_y
             if rel_x < 0 or rel_x >= win_w or rel_y < 0 or rel_y >= win_h:
                 return None
-            host_x = max(0, min(host_w - 1, round(rel_x * host_w / win_w)))
-            host_y = max(0, min(host_h - 1, round(rel_y * host_h / win_h)))
+            scale_x = host_w / win_w
+            scale_y = host_h / win_h
+            host_x = max(0, min(host_w - 1, round(rel_x * scale_x)))
+            host_y = max(0, min(host_h - 1, round(rel_y * scale_y)))
+            if rel_x >= win_w - 1:
+                host_x = host_w - 1
+            if rel_y >= win_h - 1:
+                host_y = host_h - 1
             return f"move_abs:{host_x},{host_y}"
 
         if kind == "move":

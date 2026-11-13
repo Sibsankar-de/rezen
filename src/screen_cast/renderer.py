@@ -21,6 +21,66 @@ apply_multiprocessing_fix()
 logger = get_logger(__name__)
 
 _GUI_NORMAL_FLAG = getattr(cv2, "WINDOW_GUI_NORMAL", 0)
+_KEEPRATIO_FLAG = getattr(cv2, "WINDOW_KEEPRATIO", 0)
+
+
+def _disable_x11_mousewheel(window: Any) -> None:
+    """Recursively grab mouse buttons 4-7 on an X11 window to drop scroll events from Qt."""
+    if Xlib is None:
+        return
+    for btn in (4, 5, 6, 7):
+        try:
+            window.grab_button(
+                btn,
+                Xlib.X.AnyModifier,
+                0,  # owner_events = False -> drops event from entering Qt event queue
+                0,  # event_mask = 0
+                Xlib.X.GrabModeAsync,
+                Xlib.X.GrabModeAsync,
+                Xlib.X.NONE,
+                Xlib.X.NONE,
+            )
+        except Exception:
+            pass
+    tree = getattr(window, "query_tree", None)
+    if tree:
+        try:
+            for child in tree().children:
+                _disable_x11_mousewheel(child)
+        except Exception:
+            pass
+
+
+def _disable_mousewheel_zoom(window_name: str) -> bool:
+    """Disable mouse wheel zoom on Linux/X11 by grabbing buttons 4-7 on the window hierarchy."""
+    if not sys.platform.startswith("linux") or Xlib is None:
+        return False
+    display = _get_xlib_display()
+    if display is None:
+        return False
+    try:
+        display.sync()
+        root = display.screen().root
+
+        def _find_and_disable(w: Any) -> bool:
+            wm_name = getattr(w, "get_wm_name", lambda: None)()
+            if wm_name and window_name in wm_name:
+                _disable_x11_mousewheel(w)
+                return True
+            tree = getattr(w, "query_tree", None)
+            if tree:
+                for child in tree().children:
+                    if _find_and_disable(child):
+                        return True
+            return False
+
+        found = _find_and_disable(root)
+        if found:
+            display.sync()
+        return found
+    except Exception as exc:
+        logger.debug(f"Could not disable mousewheel zoom via Xlib: {exc}")
+        return False
 
 
 def _is_window_open(window_name: str) -> bool:
@@ -153,7 +213,7 @@ def _render_process_entry(
         except Exception:
             pass
 
-        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL | _GUI_NORMAL_FLAG)
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL | _KEEPRATIO_FLAG | _GUI_NORMAL_FLAG)
         cv2.resizeWindow(window_name, 960, 540)
         cv2.setMouseCallback(window_name, lambda *args: None)
         window_created = True
@@ -183,6 +243,7 @@ def _render_process_entry(
         for _ in range(5):
             cv2.waitKey(20)
         _poll_window_state(window_name, win_geometry, is_focused)
+        wheel_disabled = _disable_mousewheel_zoom(window_name)
     except Exception as exc:
         logger.warning(f"Error creating window in renderer process: {exc}")
 
@@ -190,6 +251,8 @@ def _render_process_entry(
     last_poll_time = time.monotonic()
     invisible_count = 0
     while not stop_event.is_set():
+        if not wheel_disabled and time.time() - start_time < 3.0:
+            wheel_disabled = _disable_mousewheel_zoom(window_name)
         try:
             frame = frame_queue.get(timeout=0.03)
             if frame is None:
