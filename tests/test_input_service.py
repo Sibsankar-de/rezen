@@ -251,12 +251,12 @@ async def test_keyboard_capture_press_and_release():
         captured_events.append(event)
 
     await kc.start(mock_enqueue)
-    kc._on_key_press(KeyCode.from_char("x"))
+    kc._on_pynput_press(KeyCode.from_char("x"))
     await asyncio.sleep(0.01)
     assert len(captured_events) == 1
     assert "char:x" in captured_events[0].data
 
-    kc._on_key_release(KeyCode.from_char("x"))
+    kc._on_pynput_release(KeyCode.from_char("x"))
     assert "char:x" not in kc._pressed_keys
 
     await kc.stop()
@@ -311,6 +311,8 @@ def test_keyboard_controller_sequential_apply():
     from input_control.keyboard_controller import KeyboardController
 
     controller = KeyboardController()
+    controller._uinput = None
+    controller._backend = "pynput"
     controller._keyboard_controller = MagicMock()
 
     # Pass sequential keys: 'a', 'b', 'c'
@@ -753,6 +755,60 @@ def test_mouse_capture_relative_move_subpixel_sensitivity():
 
     res_y = mc._translate("move:0,1")
     assert res_y == "move:0,1"
+
+
+def test_mouse_controller_virtual_mode():
+    from unittest.mock import MagicMock
+    from pynput.mouse import Button
+    from input_control.mouse_controller import MouseController
+
+    mc = MouseController()
+    mc._uinput = None
+    mc._backend = "pynput"
+    mock_pynput_ctrl = MagicMock()
+    mc._mouse_controller = mock_pynput_ctrl
+    mc.set_virtual_mode(True)
+
+    # move_abs in virtual mode should NOT move pynput position immediately
+    mc.apply(InputObject(type=InputType.MOUSE, data={"move_abs:450,250"}))
+    assert mock_pynput_ctrl.position != (450, 250)
+    assert mc._remote_target_x == 450
+    assert mc._remote_target_y == 250
+
+    # click should warp to the recorded coordinates and click
+    mc.apply(InputObject(type=InputType.MOUSE, data={"click:left:1"}))
+    assert mock_pynput_ctrl.position == (450, 250)
+    mock_pynput_ctrl.press.assert_called_once_with(Button.left)
+
+    mc.close()
+
+
+@pytest.mark.asyncio
+async def test_input_receiver_overlay_forwarding():
+    from unittest.mock import MagicMock
+    from input_control.receiver import InputReceiver
+
+    mock_overlay = MagicMock()
+    receiver = InputReceiver(pointer_overlay=mock_overlay)
+    mock_mouse = MagicMock()
+    receiver._mouse_controller = mock_mouse
+
+    await receiver.start()
+    mock_overlay.start.assert_called_once()
+
+    await receiver._handle_received_event(
+        InputObject(type=InputType.MOUSE, data={"move_abs:600,400"})
+    )
+    mock_overlay.update_position.assert_called_with(600, 400)
+    mock_mouse.apply.assert_called()
+
+    await receiver._handle_received_event(
+        InputObject(type=InputType.MOUSE, data={"click:left:1"})
+    )
+    mock_overlay.show_click_feedback.assert_called_with("left", True)
+
+    await receiver.stop()
+    mock_overlay.stop.assert_called_once()
 
 
 

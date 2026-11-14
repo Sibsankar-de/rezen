@@ -313,6 +313,11 @@ class MouseCapture:
             rel_x = screen_x - win_x
             rel_y = screen_y - win_y
             if rel_x < 0 or rel_x >= win_w or rel_y < 0 or rel_y >= win_h:
+                if hasattr(self._renderer, "set_remote_pointer"):
+                    try:
+                        self._renderer.set_remote_pointer(0, 0, False)
+                    except Exception:
+                        pass
                 return None
             scale_x = host_w / win_w
             scale_y = host_h / win_h
@@ -322,6 +327,11 @@ class MouseCapture:
                 host_x = host_w - 1
             if rel_y >= win_h - 1:
                 host_y = host_h - 1
+            if hasattr(self._renderer, "set_remote_pointer"):
+                try:
+                    self._renderer.set_remote_pointer(host_x, host_y, True)
+                except Exception:
+                    pass
             return f"move_abs:{host_x},{host_y}"
 
         if kind == "move":

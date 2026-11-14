@@ -85,6 +85,16 @@ class Receiver:
         if self._renderer is not None:
             self._renderer.set_host_resolution(width, height)
 
+    def set_host_cursor(self, x: int, y: int, visible: bool = True) -> None:
+        """Forward host cursor position to renderer."""
+        if self._renderer is not None:
+            self._renderer.set_host_cursor(x, y, visible)
+
+    def set_remote_pointer(self, x: int, y: int, visible: bool = True) -> None:
+        """Forward remote pointer position to renderer."""
+        if self._renderer is not None:
+            self._renderer.set_remote_pointer(x, y, visible)
+
     @property
     def decoder(self) -> H264Decoder:
         if self._decoder is None:

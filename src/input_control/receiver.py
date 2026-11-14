@@ -2,6 +2,7 @@ import asyncio
 
 from input_control.keyboard_controller import KeyboardController
 from input_control.mouse_controller import MouseController
+from input_control.pointer_overlay import PointerOverlay
 from models.input import InputObject, InputType
 from settings import settings
 from utils.logger import get_logger
@@ -12,9 +13,11 @@ logger = get_logger(__name__)
 class InputReceiver:
     """Receive streamed inputs"""
 
-    def __init__(self):
+    def __init__(self, pointer_overlay: PointerOverlay | None = None):
         self._keyboard_controller = KeyboardController()
         self._mouse_controller = MouseController()
+        self._mouse_controller.set_virtual_mode(True)
+        self._pointer_overlay = pointer_overlay
 
         self._running = False
         self._receive_queue: asyncio.Queue[InputObject] = asyncio.Queue(
@@ -30,6 +33,10 @@ class InputReceiver:
             return
 
         self._running = True
+        if self._pointer_overlay is None:
+            self._pointer_overlay = PointerOverlay()
+        self._pointer_overlay.start()
+
         self._receive_task = asyncio.create_task(self._run_receive_loop())
         logger.info("InputReceiver started.")
 
@@ -45,6 +52,10 @@ class InputReceiver:
             self._receive_task.cancel()
             await asyncio.gather(self._receive_task, return_exceptions=True)
             self._receive_task = None
+
+        if self._pointer_overlay is not None:
+            self._pointer_overlay.stop()
+            self._pointer_overlay = None
 
         await self._clear_queue()
         self._keyboard_controller.close()
@@ -88,6 +99,23 @@ class InputReceiver:
             case InputType.KEYBOARD:
                 self._keyboard_controller.apply(event)
             case InputType.MOUSE:
+                if self._pointer_overlay is not None:
+                    for encoded in event.data:
+                        if encoded.startswith("move_abs:"):
+                            _, _, rest = encoded.partition(":")
+                            x_str, _, y_str = rest.partition(",")
+                            try:
+                                self._pointer_overlay.update_position(
+                                    int(x_str), int(y_str)
+                                )
+                            except ValueError:
+                                pass
+                        elif encoded.startswith("click:"):
+                            parts = encoded.split(":")
+                            if len(parts) >= 3:
+                                self._pointer_overlay.show_click_feedback(
+                                    parts[1], parts[2] == "1"
+                                )
                 self._mouse_controller.apply(event)
             case _:
                 logger.warning(f"[RECEIVER] Unhandled input event type: {event.type}")

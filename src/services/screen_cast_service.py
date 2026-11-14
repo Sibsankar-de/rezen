@@ -4,6 +4,7 @@ from models.connection import Connection
 from models.stream_chunk import StreamChunk
 from protocol.connection_manager import ConnectionManager
 from protocol.packet import Packet, PacketType
+from input_control.cursor_tracker import HostCursorTracker
 from screen_cast.receiver import Receiver
 from screen_cast.streamer import Streamer
 from services.connection_service import ConnectionService
@@ -30,6 +31,7 @@ class ScreenCastService:
 
         self._streamer = streamer
         self._receiver = receiver
+        self._cursor_tracker: HostCursorTracker | None = None
 
         self._sent_chunks = 0
         self._sent_bytes = 0
@@ -52,11 +54,28 @@ class ScreenCastService:
         logger.info("Starting screen cast streaming...")
         await self._connection_manager.subscribe(self._handle_streamer_packet)
         await self._send_screen_info()
+        self._cursor_tracker = HostCursorTracker(self._send_host_cursor)
+        await self._cursor_tracker.start()
         await self.streamer.start(self._send_chunk)
+
+    async def _send_host_cursor(self, x: int, y: int, visible: bool) -> None:
+        packet = Packet(
+            type=PacketType.HOST_CURSOR,
+            version="1.0",
+            device_id=self._device_service.get_current_device().id,
+            payload={"x": x, "y": y, "visible": visible},
+        )
+        try:
+            await self._connection_service.send_to_latest(packet)
+        except Exception:
+            pass
 
     async def stop_streaming(self) -> None:
         """Stop and close streaming"""
         logger.info("Stopping screen cast streaming...")
+        if self._cursor_tracker is not None:
+            await self._cursor_tracker.stop()
+            self._cursor_tracker = None
         await self._connection_manager.unsubscribe(self._handle_streamer_packet)
         if self._streamer is not None:
             await self._streamer.stop()
@@ -161,6 +180,7 @@ class ScreenCastService:
         await self.receiver.start()
         await self._connection_manager.subscribe(self._handle_stream_packet)
         await self._connection_manager.subscribe(self._handle_screen_info_packet)
+        await self._connection_manager.subscribe(self._handle_host_cursor_packet)
         logger.info(
             f"Screen cast receiving is live; subscribed to stream packets "
             f"({self._connection_manager.get_connection_count()} active connection(s))."
@@ -185,9 +205,26 @@ class ScreenCastService:
         logger.info("Stopping screen cast receiving...")
         await self._connection_manager.unsubscribe(self._handle_stream_packet)
         await self._connection_manager.unsubscribe(self._handle_screen_info_packet)
+        await self._connection_manager.unsubscribe(self._handle_host_cursor_packet)
         if self._receiver is not None:
             await self._receiver.stop()
             self._receiver = None
+
+    async def _handle_host_cursor_packet(
+        self, connection: Connection, packet: Packet
+    ) -> None:
+        if not self._verify_connection_packet(
+            connection, packet, PacketType.HOST_CURSOR
+        ):
+            return
+
+        payload = packet.payload
+        if isinstance(payload, dict):
+            x = payload.get("x")
+            y = payload.get("y")
+            visible = payload.get("visible", True)
+            if x is not None and y is not None and self._receiver is not None:
+                self.receiver.set_host_cursor(int(x), int(y), bool(visible))
 
     async def _handle_screen_info_packet(
         self, connection: Connection, packet: Packet

@@ -26,5 +26,9 @@ class Settings(BaseSettings):
     INPUT_STREAM_QUEUE_MAX_SIZE: int = 10000
     INPUT_RECEIVE_QUEUE_MAX_SIZE: int = 10000
 
+    REMOTE_POINTER_COLOR: str = "#00E676"
+    REMOTE_POINTER_SIZE: int = 18
+    HOST_CURSOR_SYNC_FPS: int = 60
+
 
 settings = Settings()

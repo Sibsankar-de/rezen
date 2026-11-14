@@ -311,3 +311,27 @@ def test_verify_connection_packet(screen_cast_setup):
     other_conn.device_id = "other_dev"
     cs.latest_connection = conn
     assert service._verify_connection_packet(other_conn, pkt) is False
+
+
+@pytest.mark.asyncio
+async def test_host_cursor_packet_send_and_receive(screen_cast_setup):
+    service, _, cs, _, _, receiver = screen_cast_setup
+    conn = cs.latest_connection
+
+    # Test send
+    await service._send_host_cursor(250, 450, True)
+    cs.send_to_latest.assert_awaited_once()
+    sent_pkt = cs.send_to_latest.call_args[0][0]
+    assert sent_pkt.type == PacketType.HOST_CURSOR
+    assert sent_pkt.payload == {"x": 250, "y": 450, "visible": True}
+
+    # Test receive
+    receiver.set_host_cursor = MagicMock()
+    recv_pkt = Packet(
+        type=PacketType.HOST_CURSOR,
+        version="1.0",
+        device_id="remote_dev",
+        payload={"x": 500, "y": 300, "visible": True},
+    )
+    await service._handle_host_cursor_packet(conn, recv_pkt)
+    receiver.set_host_cursor.assert_called_once_with(500, 300, True)

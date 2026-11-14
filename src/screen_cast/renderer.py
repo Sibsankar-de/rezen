@@ -24,6 +24,46 @@ _GUI_NORMAL_FLAG = getattr(cv2, "WINDOW_GUI_NORMAL", 0)
 _KEEPRATIO_FLAG = getattr(cv2, "WINDOW_KEEPRATIO", 0)
 
 
+def _hex_to_bgr(hex_code: str) -> tuple[int, int, int]:
+    clean = hex_code.lstrip("#")
+    if len(clean) == 6:
+        try:
+            r = int(clean[0:2], 16)
+            g = int(clean[2:4], 16)
+            b = int(clean[4:6], 16)
+            return (b, g, r)
+        except ValueError:
+            pass
+    return (118, 230, 0)
+
+
+def _draw_cursor_arrow(
+    img: np.ndarray,
+    origin_x: int,
+    origin_y: int,
+    fill_bgr: tuple[int, int, int],
+    size: int = 18,
+) -> None:
+    h, w = img.shape[:2]
+    if origin_x < 0 or origin_x >= w or origin_y < 0 or origin_y >= h:
+        return
+
+    pts = np.array(
+        [
+            [origin_x, origin_y],
+            [origin_x, min(h - 1, origin_y + int(size * 0.9))],
+            [min(w - 1, origin_x + int(size * 0.28)), min(h - 1, origin_y + int(size * 0.68))],
+            [min(w - 1, origin_x + int(size * 0.55)), min(h - 1, origin_y + int(size * 1.0))],
+            [min(w - 1, origin_x + int(size * 0.7)), min(h - 1, origin_y + int(size * 0.9))],
+            [min(w - 1, origin_x + int(size * 0.44)), min(h - 1, origin_y + int(size * 0.58))],
+            [min(w - 1, origin_x + int(size * 0.75)), min(h - 1, origin_y + int(size * 0.58))],
+        ],
+        dtype=np.int32,
+    )
+    cv2.fillPoly(img, [pts], fill_bgr)
+    cv2.polylines(img, [pts], isClosed=True, color=(0, 0, 0), thickness=2, lineType=cv2.LINE_AA)
+
+
 def _disable_x11_mousewheel(window: Any) -> None:
     """Recursively grab mouse buttons 4-7 on an X11 window to drop scroll events from Qt."""
     if Xlib is None:
@@ -200,6 +240,10 @@ def _render_process_entry(
     window_name: str,
     win_geometry: Any,
     is_focused: Any,
+    cursor_state: Any = None,
+    source_dims: Any = None,
+    pointer_color_bgr: tuple[int, int, int] | None = None,
+    pointer_size: int | None = None,
 ) -> None:
     """
     Dedicated renderer process main body.
@@ -258,6 +302,30 @@ def _render_process_entry(
             if frame is None:
                 stop_event.set()
                 break
+
+            if cursor_state is not None:
+                has_host = cursor_state[2] == 1
+                has_remote = cursor_state[5] == 1
+                if has_host or has_remote:
+                    if not frame.flags.writeable:
+                        frame = frame.copy()
+                    h_w = source_dims[0] if (source_dims is not None and source_dims[0] > 0) else frame.shape[1]
+                    h_h = source_dims[1] if (source_dims is not None and source_dims[1] > 0) else frame.shape[0]
+                    scale_x = frame.shape[1] / h_w
+                    scale_y = frame.shape[0] / h_h
+                    p_size = pointer_size or settings.REMOTE_POINTER_SIZE
+
+                    if has_host:
+                        hx = int(round(cursor_state[0] * scale_x))
+                        hy = int(round(cursor_state[1] * scale_y))
+                        _draw_cursor_arrow(frame, hx, hy, (255, 255, 255), size=p_size)
+
+                    if has_remote:
+                        rx = int(round(cursor_state[3] * scale_x))
+                        ry = int(round(cursor_state[4] * scale_y))
+                        col = pointer_color_bgr or (118, 230, 0)
+                        _draw_cursor_arrow(frame, rx, ry, col, size=p_size)
+
             cv2.imshow(window_name, frame)
             cv2.waitKey(1)
         except queue.Empty:
@@ -300,6 +368,8 @@ class ScreenRenderer:
         self._process: Any = None
         self._win_geometry: Any = None
         self._is_focused: Any = None
+        self._cursor_state: Any = None
+        self._source_dims: Any = None
         self._source_size = (
             settings.SCREEN_CAPTURE_MAX_WIDTH,
             settings.SCREEN_CAPTURE_MAX_HEIGHT,
@@ -311,7 +381,24 @@ class ScreenRenderer:
         if width > 0 and height > 0:
             self._source_size = (int(width), int(height))
             self._has_host_resolution = True
+            if self._source_dims is not None:
+                self._source_dims[0] = int(width)
+                self._source_dims[1] = int(height)
             logger.info(f"ScreenRenderer host screen resolution set to {width}x{height}.")
+
+    def set_host_cursor(self, x: int, y: int, visible: bool = True) -> None:
+        """Update host cursor position for overlay in renderer."""
+        if self._cursor_state is not None:
+            self._cursor_state[0] = int(x)
+            self._cursor_state[1] = int(y)
+            self._cursor_state[2] = 1 if visible else 0
+
+    def set_remote_pointer(self, x: int, y: int, visible: bool = True) -> None:
+        """Update remote pointer position for local renderer."""
+        if self._cursor_state is not None:
+            self._cursor_state[3] = int(x)
+            self._cursor_state[4] = int(y)
+            self._cursor_state[5] = 1 if visible else 0
 
     @property
     def isClosed(self) -> bool:
@@ -360,6 +447,10 @@ class ScreenRenderer:
         self._stop_event = ctx.Event()
         self._win_geometry = ctx.Array("i", [0, 0, 960, 540])
         self._is_focused = ctx.Value("b", 0)
+        self._cursor_state = ctx.Array("i", [-1, -1, 0, -1, -1, 0])
+        self._source_dims = ctx.Array("i", [self._source_size[0], self._source_size[1]])
+        color_bgr = _hex_to_bgr(settings.REMOTE_POINTER_COLOR)
+        p_size = settings.REMOTE_POINTER_SIZE
 
         self._process = ctx.Process(
             target=_render_process_entry,
@@ -369,6 +460,10 @@ class ScreenRenderer:
                 self._window_name,
                 self._win_geometry,
                 self._is_focused,
+                self._cursor_state,
+                self._source_dims,
+                color_bgr,
+                p_size,
             ),
             name="ScreenRendererProcess",
             daemon=True,

@@ -19,6 +19,7 @@ class PacketType(StrEnum):
     INPUT_EVENT = "input_event"
     SCREEN_INFO = "screen_info"
     SCREEN_INFO_REQUEST = "screen_info_request"
+    HOST_CURSOR = "host_cursor"
 
 
 @dataclass(slots=True)

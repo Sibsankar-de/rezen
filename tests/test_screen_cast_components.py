@@ -507,3 +507,28 @@ def test_screen_renderer_disable_mousewheel_zoom():
         assert res is True
         assert mock_target.grab_button.call_count == 4
 
+
+def test_renderer_cursor_drawing_and_state():
+    import numpy as np
+    from screen_cast.renderer import ScreenRenderer, _hex_to_bgr, _draw_cursor_arrow
+
+    assert _hex_to_bgr("#00E676") == (0x76, 0xE6, 0x00)
+    assert _hex_to_bgr("invalid") == (118, 230, 0)
+
+    canvas = np.zeros((100, 100, 3), dtype=np.uint8)
+    _draw_cursor_arrow(canvas, 10, 10, (0, 255, 0), size=18)
+    # Confirm pixels were drawn
+    assert canvas.sum() > 0
+
+    renderer = ScreenRenderer()
+    renderer._cursor_state = [0, 0, 0, 0, 0, 0]
+    renderer.set_host_cursor(150, 200, True)
+    assert renderer._cursor_state[0] == 150
+    assert renderer._cursor_state[1] == 200
+    assert renderer._cursor_state[2] == 1
+
+    renderer.set_remote_pointer(300, 400, True)
+    assert renderer._cursor_state[3] == 300
+    assert renderer._cursor_state[4] == 400
+    assert renderer._cursor_state[5] == 1
+
