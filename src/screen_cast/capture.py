@@ -2,8 +2,10 @@ import os
 from dataclasses import dataclass
 from typing import Protocol
 
+import cv2
 import mss
 import numpy as np
+from pynput.mouse import Controller as MouseController
 
 from settings import settings
 from utils.logger import get_logger
@@ -100,6 +102,40 @@ def get_system_screen_size() -> tuple[int, int]:
     return (settings.SCREEN_CAPTURE_MAX_WIDTH, settings.SCREEN_CAPTURE_MAX_HEIGHT)
 
 
+def _burn_cursor_to_frame(
+    frame: np.ndarray,
+    cursor_x: int,
+    cursor_y: int,
+    orig_w: int,
+    orig_h: int,
+    size: int = 18,
+) -> None:
+    if cursor_x < 0 or cursor_y < 0:
+        return
+    fh, fw = frame.shape[:2]
+    scale_x = fw / orig_w if orig_w > 0 else 1.0
+    scale_y = fh / orig_h if orig_h > 0 else 1.0
+    x = round(cursor_x * scale_x)
+    y = round(cursor_y * scale_y)
+    if x < 0 or x >= fw or y < 0 or y >= fh:
+        return
+
+    pts = np.array(
+        [
+            [x, y],
+            [x, min(fh - 1, y + int(size * 0.9))],
+            [min(fw - 1, x + int(size * 0.28)), min(fh - 1, y + int(size * 0.68))],
+            [min(fw - 1, x + int(size * 0.55)), min(fh - 1, y + int(size * 1.0))],
+            [min(fw - 1, x + int(size * 0.7)), min(fh - 1, y + int(size * 0.9))],
+            [min(fw - 1, x + int(size * 0.44)), min(fh - 1, y + int(size * 0.58))],
+            [min(fw - 1, x + int(size * 0.75)), min(fh - 1, y + int(size * 0.58))],
+        ],
+        dtype=np.int32,
+    )
+    cv2.fillPoly(frame, [pts], (255, 255, 255, 255))
+    cv2.polylines(frame, [pts], isClosed=True, color=(0, 0, 0, 255), thickness=2, lineType=cv2.LINE_AA)
+
+
 class ScreenCapture:
     """Captures screen frames using MSS."""
 
@@ -132,6 +168,11 @@ class ScreenCapture:
         self._monitor = dict(selected_monitor)
         self._monitor["width"] = self._width
         self._monitor["height"] = self._height
+
+        try:
+            self._mouse_controller: MouseController | None = MouseController()
+        except (ImportError, OSError, RuntimeError):
+            self._mouse_controller = None
 
         self._closed = False
         self._blank_frames = 0
@@ -203,6 +244,18 @@ class ScreenCapture:
 
         frame = np.asarray(screenshot)
         self._check_usable(frame)
+
+        if self._mouse_controller is not None:
+            try:
+                pos = self._mouse_controller.position
+                if pos is not None:
+                    if not frame.flags.writeable:
+                        frame = frame.copy()
+                    _burn_cursor_to_frame(
+                        frame, round(pos[0]), round(pos[1]), self._width, self._height
+                    )
+            except (OSError, RuntimeError):
+                pass
 
         return frame
 

@@ -1,13 +1,12 @@
 import asyncio
 import time
-from typing import Optional, Callable, Awaitable, Any
+from collections.abc import Awaitable, Callable
 
 import numpy as np
 
-from screen_cast.capture import FrameSource, create_capture
+from models.stream_chunk import ChunkType, FlagType, StreamChunk
+from screen_cast.capture import FrameSource, _burn_cursor_to_frame, create_capture
 from screen_cast.h264 import H264Encoder
-from models.stream_chunk import StreamChunk, ChunkType, FlagType
-
 from settings import settings
 from utils.logger import get_logger
 
@@ -16,14 +15,16 @@ logger = get_logger(__name__)
 TARGET_FPS = 30
 STATS_INTERVAL_SECONDS = 5.0
 
+__all__ = ["TARGET_FPS", "Streamer", "_burn_cursor_to_frame"]
+
 
 class Streamer:
     """Handle streaming of screen"""
 
     def __init__(
         self,
-        capture: Optional[FrameSource] = None,
-        encoder: Optional[H264Encoder] = None,
+        capture: FrameSource | None = None,
+        encoder: H264Encoder | None = None,
         queue_size: int = settings.STREAM_QUEUE_MAX_SIZE,
     ):
         self._capture = capture
@@ -145,6 +146,7 @@ class Streamer:
                     logger.info(
                         f"First frame captured: shape={frame.shape} dtype={frame.dtype}."
                     )
+
                 if self._frame_queue.full():
                     try:
                         self._frame_queue.get_nowait()

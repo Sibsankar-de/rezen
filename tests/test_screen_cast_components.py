@@ -510,7 +510,8 @@ def test_screen_renderer_disable_mousewheel_zoom():
 
 def test_renderer_cursor_drawing_and_state():
     import numpy as np
-    from screen_cast.renderer import ScreenRenderer, _hex_to_bgr, _draw_cursor_arrow
+
+    from screen_cast.renderer import ScreenRenderer, _draw_cursor_arrow, _hex_to_bgr
 
     assert _hex_to_bgr("#00E676") == (0x76, 0xE6, 0x00)
     assert _hex_to_bgr("invalid") == (118, 230, 0)
@@ -531,4 +532,47 @@ def test_renderer_cursor_drawing_and_state():
     assert renderer._cursor_state[3] == 300
     assert renderer._cursor_state[4] == 400
     assert renderer._cursor_state[5] == 1
+
+
+def test_streamer_burn_cursor_to_frame():
+    import numpy as np
+
+    from screen_cast.capture import _burn_cursor_to_frame
+
+    frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+    _burn_cursor_to_frame(frame, 500, 300, 1920, 1080)
+    assert frame.sum() > 0
+
+    # Test out-of-bounds does not crash or draw
+    empty_frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+    _burn_cursor_to_frame(empty_frame, -10, -10, 1920, 1080)
+    assert empty_frame.sum() == 0
+
+
+def test_screen_capture_burns_cursor():
+    from unittest.mock import MagicMock, patch
+
+    import numpy as np
+
+    from screen_cast.capture import ScreenCapture
+
+    mock_sct = MagicMock()
+    mock_sct.__enter__.return_value = mock_sct
+    mock_sct.monitors = [
+        {"top": 0, "left": 0, "width": 1920, "height": 1080},
+        {"top": 0, "left": 0, "width": 1920, "height": 1080, "is_primary": True},
+    ]
+    raw_frame = np.ones((1080, 1920, 4), dtype=np.uint8)
+    mock_sct.grab.return_value = raw_frame
+
+    with patch("mss.MSS", return_value=mock_sct):
+        cap = ScreenCapture(monitor=1)
+        mock_mouse = MagicMock()
+        mock_mouse.position = (500, 300)
+        cap._mouse_controller = mock_mouse
+
+        captured = cap.capture()
+        assert captured is not None
+        assert (captured == 255).any()
+        cap.close()
 

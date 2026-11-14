@@ -1,33 +1,32 @@
+from io import StringIO
 from unittest.mock import MagicMock, patch
 
-from input_control.pointer_overlay import PointerOverlay, _build_cursor_shape_rects
+from input_control.pointer_overlay import PointerOverlay, _find_system_python
 
 
-def test_build_cursor_shape_rects():
-    rects_default = _build_cursor_shape_rects(24)
-    assert len(rects_default) == 12
-    assert rects_default[0] == (0, 0, 2, 2)
-
-    rects_scaled = _build_cursor_shape_rects(48)
-    assert len(rects_scaled) == 12
-    assert rects_scaled[0] == (0, 0, 4, 4)
+def test_find_system_python():
+    py = _find_system_python()
+    assert py is not None
 
 
 def test_pointer_overlay_lifecycle():
-    with patch("threading.Thread") as mock_thread_cls:
-        mock_thread = MagicMock()
-        mock_thread_cls.return_value = mock_thread
+    mock_stdin = StringIO()
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = None
+    mock_proc.stdin = mock_stdin
 
+    with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
         overlay = PointerOverlay(color_hex="#00E676", size=18)
         overlay.start(1920, 1080)
-        assert overlay._thread is not None
-        mock_thread.start.assert_called_once()
+        assert overlay._proc is not None
+        mock_popen.assert_called_once()
 
         overlay.update_position(500, 300)
-        assert overlay._queue.get_nowait() == ("move", 500, 300)
+        assert "move 500 300\n" in mock_stdin.getvalue()
 
         overlay.show_click_feedback("left", True)
-        assert overlay._queue.get_nowait() == ("click", "left", True)
+        assert "click left 1\n" in mock_stdin.getvalue()
 
         overlay.stop()
-        assert overlay._thread is None
+        assert "quit\n" in mock_stdin.getvalue()
+        assert overlay._proc is None
