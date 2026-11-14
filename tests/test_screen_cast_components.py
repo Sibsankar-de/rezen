@@ -227,6 +227,10 @@ def test_screen_renderer_lifecycle():
 
         frame = np.zeros((10, 10, 3), dtype=np.uint8)
         assert renderer.display(frame) is True
+        assert renderer.source_size == (10, 10)
+        assert isinstance(renderer.window_geometry, tuple)
+        assert len(renderer.window_geometry) == 4
+        assert isinstance(renderer.is_focused, bool)
 
         renderer.close()
         assert renderer.isClosed is True
@@ -415,3 +419,91 @@ def test_pipewire_requires_system_python_with_bindings():
                 PipeWireScreenCapture()
 
     assert callable(find_system_python)
+
+
+def test_screen_renderer_set_host_resolution_precedence():
+    with patch("cv2.namedWindow"), patch("cv2.imshow"), patch("cv2.waitKey", return_value=0), patch(
+        "cv2.getWindowProperty", return_value=1.0
+    ), patch("cv2.destroyWindow"):
+        renderer = ScreenRenderer()
+        renderer.start()
+
+        # Before setting host resolution, frame shape updates source_size
+        frame1 = np.zeros((720, 1280, 3), dtype=np.uint8)
+        renderer.display(frame1)
+        assert renderer.source_size == (1280, 720)
+
+        # Explicit host resolution takes precedence
+        renderer.set_host_resolution(1920, 1080)
+        assert renderer.source_size == (1920, 1080)
+
+        # Subsequent downscaled frames do NOT overwrite host resolution
+        frame2 = np.zeros((360, 640, 3), dtype=np.uint8)
+        renderer.display(frame2)
+        assert renderer.source_size == (1920, 1080)
+
+        renderer.close()
+
+
+def test_receiver_set_host_resolution():
+    with patch("cv2.namedWindow"), patch("cv2.imshow"), patch("cv2.waitKey", return_value=0), patch(
+        "cv2.getWindowProperty", return_value=1.0
+    ), patch("cv2.destroyWindow"):
+        receiver = Receiver()
+        receiver.set_host_resolution(2560, 1440)
+        assert receiver.renderer.source_size == (2560, 1440)
+
+
+def test_capture_and_streamer_screen_size():
+    from screen_cast.capture import ScreenCapture, get_system_screen_size
+    from screen_cast.streamer import Streamer
+
+    mock_sct = MagicMock()
+    mock_sct.__enter__.return_value = mock_sct
+    mock_sct.monitors = [
+        {"top": 0, "left": 0, "width": 1920, "height": 1080},
+        {"top": 0, "left": 0, "width": 1920, "height": 1080, "is_primary": True},
+    ]
+    with patch("mss.MSS", return_value=mock_sct):
+        cap = ScreenCapture(monitor=1)
+        assert cap.screen_size == (1920, 1080)
+
+        streamer = Streamer(capture=cap)
+        assert streamer.screen_size == (1920, 1080)
+
+        assert get_system_screen_size() == (1920, 1080)
+        cap.close()
+
+
+def test_screen_renderer_disable_mousewheel_zoom():
+    from unittest.mock import MagicMock, patch
+
+    from screen_cast.renderer import _disable_mousewheel_zoom, _disable_x11_mousewheel
+
+    mock_win = MagicMock()
+    mock_child = MagicMock()
+    mock_tree = MagicMock()
+    mock_tree.children = [mock_child]
+    mock_win.query_tree.return_value = mock_tree
+    mock_child.query_tree.return_value = MagicMock(children=[])
+
+    _disable_x11_mousewheel(mock_win)
+    # Buttons 4, 5, 6, 7 grabbed on window and child
+    assert mock_win.grab_button.call_count == 4
+    assert mock_child.grab_button.call_count == 4
+
+    # Test _disable_mousewheel_zoom finding window in tree
+    mock_display = MagicMock()
+    mock_root = MagicMock()
+    mock_display.screen.return_value.root = mock_root
+    mock_root.get_wm_name.return_value = "Root"
+    mock_target = MagicMock()
+    mock_target.get_wm_name.return_value = "TestWindow"
+    mock_target.query_tree.return_value = MagicMock(children=[])
+    mock_root.query_tree.return_value = MagicMock(children=[mock_target])
+
+    with patch("screen_cast.renderer._get_xlib_display", return_value=mock_display), patch("sys.platform", "linux"):
+        res = _disable_mousewheel_zoom("TestWindow")
+        assert res is True
+        assert mock_target.grab_button.call_count == 4
+

@@ -33,6 +33,9 @@ class FrameSource(Protocol):
     @property
     def info(self) -> ScreenInfo: ...
 
+    @property
+    def screen_size(self) -> tuple[int, int]: ...
+
     def capture(self) -> np.ndarray: ...
 
     def close(self) -> None: ...
@@ -71,6 +74,30 @@ def create_capture(monitor: int = 1, target_fps: int = 30) -> FrameSource:
                 )
 
     return ScreenCapture(monitor=monitor)
+
+
+def get_system_screen_size() -> tuple[int, int]:
+    """Return the primary display screen dimensions (width, height) using MSS or fallback settings."""
+    try:
+        with mss.MSS() as sct:
+            monitors = getattr(sct, "monitors", None)
+            if monitors:
+                mon = monitors[1] if len(monitors) > 1 else monitors[0]
+                w = (
+                    int(mon.get("width", 0))
+                    if isinstance(mon, dict)
+                    else int(getattr(mon, "width", 0))
+                )
+                h = (
+                    int(mon.get("height", 0))
+                    if isinstance(mon, dict)
+                    else int(getattr(mon, "height", 0))
+                )
+                if w > 0 and h > 0:
+                    return (w - (w % 2), h - (h % 2))
+    except Exception:
+        pass
+    return (settings.SCREEN_CAPTURE_MAX_WIDTH, settings.SCREEN_CAPTURE_MAX_HEIGHT)
 
 
 class ScreenCapture:
@@ -135,6 +162,10 @@ class ScreenCapture:
             width=self._width,
             height=self._height,
         )
+
+    @property
+    def screen_size(self) -> tuple[int, int]:
+        return (self._width, self._height)
 
     @property
     def blank_frames(self) -> int:

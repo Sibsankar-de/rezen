@@ -50,14 +50,86 @@ class ScreenCastService:
     async def start_streaming(self) -> None:
         """Start streaming"""
         logger.info("Starting screen cast streaming...")
+        await self._connection_manager.subscribe(self._handle_streamer_packet)
+        await self._send_screen_info()
         await self.streamer.start(self._send_chunk)
 
     async def stop_streaming(self) -> None:
         """Stop and close streaming"""
         logger.info("Stopping screen cast streaming...")
+        await self._connection_manager.unsubscribe(self._handle_streamer_packet)
         if self._streamer is not None:
             await self._streamer.stop()
             self._streamer = None
+
+    def _get_host_screen_size(self) -> tuple[int, int]:
+        """Determine host screen resolution using streamer or capture backend."""
+        if self._streamer is not None:
+            size = getattr(self._streamer, "screen_size", None)
+            if isinstance(size, (tuple, list)) and len(size) == 2:
+                try:
+                    return int(size[0]), int(size[1])
+                except (TypeError, ValueError):
+                    pass
+        from screen_cast.capture import get_system_screen_size
+
+        return get_system_screen_size()
+
+    async def _send_screen_info(self) -> None:
+        """Create packet and send host screen dimensions to the receiver."""
+        w, h = self._get_host_screen_size()
+        packet = Packet(
+            type=PacketType.SCREEN_INFO,
+            version="1.0",
+            device_id=self._device_service.get_current_device().id,
+            payload={"width": int(w), "height": int(h)},
+        )
+        logger.info(f"Sending SCREEN_INFO packet: {w}x{h}")
+        await self._connection_service.send_to_latest(packet)
+
+    def _verify_connection_packet(
+        self,
+        connection: Connection,
+        packet: Packet | None,
+        expected_type: PacketType | None = None,
+    ) -> bool:
+        """Validate that a packet exists, matches expected type, and belongs to the active connection."""
+        if packet is None:
+            return False
+
+        if expected_type is not None and packet.type != expected_type:
+            return False
+
+        latest = self._connection_service.latest_connection
+        if not latest:
+            logger.debug(
+                f"Received packet {packet.type} but no active latest_connection."
+            )
+            return False
+
+        conn_dev_id = getattr(connection, "device_id", None)
+        latest_dev_id = getattr(latest, "device_id", None)
+        if latest.id != connection.id and (
+            not conn_dev_id or conn_dev_id != latest_dev_id
+        ):
+            logger.debug(
+                f"Ignoring packet from {connection.id}: does not match active connection {latest.id}."
+            )
+            return False
+
+        return True
+
+    async def _handle_streamer_packet(
+        self, connection: Connection, packet: Packet
+    ) -> None:
+        if not self._verify_connection_packet(
+            connection, packet, PacketType.SCREEN_INFO_REQUEST
+        ):
+            return
+        logger.info(
+            f"Received SCREEN_INFO_REQUEST from {connection.id}; sending SCREEN_INFO."
+        )
+        await self._send_screen_info()
 
     async def _send_chunk(self, chunk: StreamChunk) -> None:
         """Create packet and send stream chunk"""
@@ -88,38 +160,63 @@ class ScreenCastService:
         logger.info("Starting screen cast receiving...")
         await self.receiver.start()
         await self._connection_manager.subscribe(self._handle_stream_packet)
+        await self._connection_manager.subscribe(self._handle_screen_info_packet)
         logger.info(
             f"Screen cast receiving is live; subscribed to stream packets "
             f"({self._connection_manager.get_connection_count()} active connection(s))."
         )
+        await self._request_screen_info()
+
+    async def _request_screen_info(self) -> None:
+        """Request host screen dimensions from the streamer."""
+        packet = Packet(
+            type=PacketType.SCREEN_INFO_REQUEST,
+            version="1.0",
+            device_id=self._device_service.get_current_device().id,
+            payload={},
+        )
+        try:
+            await self._connection_service.send_to_latest(packet)
+        except Exception as exc:
+            logger.debug(f"Could not send SCREEN_INFO_REQUEST: {exc}")
 
     async def stop_receiving(self) -> None:
         """Stop and clean receiver"""
         logger.info("Stopping screen cast receiving...")
         await self._connection_manager.unsubscribe(self._handle_stream_packet)
+        await self._connection_manager.unsubscribe(self._handle_screen_info_packet)
         if self._receiver is not None:
             await self._receiver.stop()
             self._receiver = None
 
+    async def _handle_screen_info_packet(
+        self, connection: Connection, packet: Packet
+    ) -> None:
+        if not self._verify_connection_packet(
+            connection, packet, PacketType.SCREEN_INFO
+        ):
+            return
+
+        payload = packet.payload
+        if isinstance(payload, dict):
+            w = payload.get("width")
+            h = payload.get("height")
+            if w and h:
+                logger.info(f"Received host SCREEN_INFO: {w}x{h}.")
+                self.receiver.set_host_resolution(int(w), int(h))
+
     async def _handle_stream_packet(
         self, connection: Connection, packet: Packet
     ) -> None:
-        latest = self._connection_service.latest_connection
-        if not latest:
-            logger.debug("Received stream packet but no active latest_connection.")
+        if not self._verify_connection_packet(
+            connection, packet, PacketType.SCREEN_FRAME_CHUNK
+        ):
+            return
+
+        if not packet.payload:
             return
 
         conn_dev_id = getattr(connection, "device_id", None)
-        latest_dev_id = getattr(latest, "device_id", None)
-        if latest.id != connection.id and (not conn_dev_id or conn_dev_id != latest_dev_id):
-            logger.debug(
-                f"Ignoring packet from {connection.id}: does not match latest connection {latest.id}"
-            )
-            return
-
-        if not packet or packet.type != PacketType.SCREEN_FRAME_CHUNK or not packet.payload:
-            return
-
         self._received_packets += 1
         if self._received_packets == 1:
             logger.info(

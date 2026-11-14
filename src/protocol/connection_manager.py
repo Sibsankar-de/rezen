@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime, timezone
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, Optional
 
 from protocol.protocol import RLP
 from protocol.packet import Packet, PacketType
@@ -18,12 +18,19 @@ PacketHandler = Callable[
 
 
 class ConnectionManager:
-    """TCP connection manager class for managing connections to devices."""
+    """TCP connection manager class for managing connections to devices.
+
+    on_remote_disconnect:   A generalized callback function to handle remote
+                            disconnect of a connection. (same for all)
+                            For now we are using a generalized disconnect function.
+                            In future we can differentiate connections by types.
+    """
 
     def __init__(
         self,
         current_device: Device,
         port: int = RLP.DEFAULT_PORT,
+        on_remote_disconnect: Callable[[Connection], Awaitable[None]] | None = None,
     ):
         self._port = port
         self._current_device = current_device
@@ -32,6 +39,17 @@ class ConnectionManager:
         self._running = False
         self._listener_tasks: dict[str, asyncio.Task] = {}
         self._server: asyncio.AbstractServer | None = None
+        self._on_remote_disconnect: (
+            Optional[Callable[[Connection], Awaitable[None]]] | None
+        ) = on_remote_disconnect
+
+    @property
+    def on_remote_disconnect(self) -> Callable[[Connection], Awaitable[None]] | None:
+        return self._on_remote_disconnect
+
+    @on_remote_disconnect.setter
+    def on_remote_disconnect(self, func: Callable[[Connection], Awaitable[None]]):
+        self._on_remote_disconnect = func
 
     async def start(self) -> None:
         """Start the connection manager."""
@@ -314,15 +332,18 @@ class ConnectionManager:
         except asyncio.IncompleteReadError:
             # Remote side closed the connection.
             logger.info(f"Connection closed by remote peer: {connection.id}")
+            await self.on_remote_disconnect(connection)
 
         except ConnectionError as err:
             logger.warning(f"Connection error on {connection.id}: {err}")
+            await self.on_remote_disconnect(connection)
 
         except Exception:
             logger.error(
                 f"Unexpected error in connection listener {connection.id}",
                 exc_info=True,
             )
+            await self.on_remote_disconnect(connection)
 
         finally:
             await self._cleanup_connection(connection)

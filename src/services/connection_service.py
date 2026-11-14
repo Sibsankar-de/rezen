@@ -1,4 +1,5 @@
 import asyncio
+from typing import Callable, Awaitable
 
 from models.device import Device
 from models.connection import Connection, ConnectionState
@@ -42,6 +43,9 @@ class ConnectionService:
     @latest_connection.setter
     def latest_connection(self, connection: Connection | None) -> None:
         self._latest_connection = connection
+
+    def set_on_remote_disconnect(self, func: Callable[[Connection], Awaitable[None]]) -> None:
+        self._connection_manager.on_remote_disconnect = func
 
     async def request_connection(self, to_device: Device) -> None:
         """Send a connection request to the specified device."""

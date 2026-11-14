@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     SCREEN_STREAM_BITRATE: int = 8_000_000
     SCREEN_STREAM_PRESET: str = "veryfast"
 
+    INPUT_STREAM_QUEUE_MAX_SIZE: int = 10000
+    INPUT_RECEIVE_QUEUE_MAX_SIZE: int = 10000
 
 
 settings = Settings()
