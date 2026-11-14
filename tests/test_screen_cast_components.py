@@ -576,3 +576,25 @@ def test_screen_capture_burns_cursor():
         assert (captured == 255).any()
         cap.close()
 
+
+def test_pipewire_capture_burns_cursor():
+    from unittest.mock import MagicMock
+
+    import numpy as np
+
+    from screen_cast.pipewire_capture import PipeWireScreenCapture
+
+    cap = MagicMock(spec=PipeWireScreenCapture)
+    cap._source_width = 1920
+    cap._source_height = 1080
+    cap._width = 1280
+    cap._height = 720
+    mock_mouse = MagicMock()
+    mock_mouse.position = (500, 300)
+    cap._mouse_controller = mock_mouse
+
+    frame = np.ones((720, 1280, 4), dtype=np.uint8)
+    burned = PipeWireScreenCapture._apply_cursor(cap, frame)
+    assert burned is not None
+    assert (burned == 255).any()
+

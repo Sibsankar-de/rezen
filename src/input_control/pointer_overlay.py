@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 import sys
@@ -41,6 +42,8 @@ class PointerOverlay:
             logger.debug("No Python interpreter found for overlay helper.")
             return
 
+        env = os.environ.copy()
+        env["GDK_BACKEND"] = "x11"
         try:
             self._proc = subprocess.Popen(
                 [python_bin, str(HELPER_SCRIPT), self._color_hex, str(self._size)],
@@ -49,6 +52,7 @@ class PointerOverlay:
                 stderr=subprocess.DEVNULL,
                 text=True,
                 bufsize=1,
+                env=env,
             )
             logger.info(
                 f"PointerOverlay started (color: {self._color_hex}, size: {self._size})."

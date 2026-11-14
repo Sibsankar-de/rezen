@@ -20,6 +20,7 @@ def test_pointer_overlay_lifecycle():
         overlay.start(1920, 1080)
         assert overlay._proc is not None
         mock_popen.assert_called_once()
+        assert mock_popen.call_args[1]["env"]["GDK_BACKEND"] == "x11"
 
         overlay.update_position(500, 300)
         assert "move 500 300\n" in mock_stdin.getvalue()

@@ -8,8 +8,9 @@ import time
 from pathlib import Path
 
 import numpy as np
+from pynput.mouse import Controller as MouseController
 
-from screen_cast.capture import ScreenCaptureError, ScreenInfo
+from screen_cast.capture import ScreenCaptureError, ScreenInfo, _burn_cursor_to_frame
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -187,6 +188,11 @@ class PipeWireScreenCapture:
         self._last_frame: np.ndarray | None = None
         self._reader_error: str | None = None
         self._closed = False
+
+        try:
+            self._mouse_controller: MouseController | None = MouseController()
+        except (ImportError, OSError, RuntimeError):
+            self._mouse_controller = None
 
         self._node_id, self._source_width, self._source_height = self._request_stream()
 
@@ -395,10 +401,10 @@ class PipeWireScreenCapture:
         frame = self._take_new_frame(FRAME_WAIT_SECONDS)
         if frame is not None:
             self._last_frame = frame
-            return frame
+            return self._apply_cursor(frame)
 
         if self._last_frame is not None:
-            return self._last_frame
+            return self._apply_cursor(self._last_frame)
 
         # Nothing seen yet: block until the stream produces its first frame.
         first_deadline = time.monotonic() + FIRST_FRAME_TIMEOUT_SECONDS
@@ -406,13 +412,31 @@ class PipeWireScreenCapture:
             frame = self._take_new_frame(max(0.0, first_deadline - time.monotonic()))
             if frame is not None:
                 self._last_frame = frame
-                return frame
+                return self._apply_cursor(frame)
             if self._last_frame is not None:
-                return self._last_frame
+                return self._apply_cursor(self._last_frame)
             if time.monotonic() >= first_deadline:
                 break
 
         raise ScreenCaptureError("No frames received from the screen-share stream.")
+
+    def _apply_cursor(self, frame: np.ndarray) -> np.ndarray:
+        if self._mouse_controller is None:
+            return frame
+        try:
+            pos = self._mouse_controller.position
+            if pos is not None:
+                frame = frame.copy()
+                _burn_cursor_to_frame(
+                    frame,
+                    round(pos[0]),
+                    round(pos[1]),
+                    self._source_width,
+                    self._source_height,
+                )
+        except (OSError, RuntimeError):
+            pass
+        return frame
 
     def _take_new_frame(self, timeout: float) -> np.ndarray | None:
         """Pop the newest frame if one arrives within ``timeout`` seconds."""
