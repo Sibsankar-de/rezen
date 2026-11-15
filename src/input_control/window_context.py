@@ -18,3 +18,8 @@ class WindowContext(Protocol):
     def source_size(self) -> tuple[int, int]:
         """(width, height) of the video frames being rendered."""
         ...
+
+    @property
+    def mouse_event_queue(self) -> object | None:
+        """Queue of mouse events captured from the OpenCV window."""
+        ...

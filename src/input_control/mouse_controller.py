@@ -211,6 +211,9 @@ class MouseController:
 
     def _do_move(self, dx: int, dy: int) -> None:
         logger.debug(f"[CONTROLLER] Mouse move rel ({dx}, {dy}) via {self._backend}")
+        if self._virtual_mode:
+            return
+
         if self._uinput is not None and ecodes is not None:
             self._uinput.write(ecodes.EV_REL, ecodes.REL_X, dx)
             self._uinput.write(ecodes.EV_REL, ecodes.REL_Y, dy)
@@ -288,12 +291,8 @@ class MouseController:
         logger.debug(
             f"[CONTROLLER] Mouse {'press' if pressed else 'release'} {btn_name!r} via {self._backend}"
         )
-        if (
-            self._virtual_mode
-            and self._remote_target_x is not None
-            and self._remote_target_y is not None
-        ):
-            self._warp_to(self._remote_target_x, self._remote_target_y)
+        if self._virtual_mode:
+            return
 
         if self._uinput is not None and ecodes is not None:
             code = _BTN_NAME_TO_EVDEV.get(btn_name)
@@ -313,12 +312,8 @@ class MouseController:
 
     def _do_scroll(self, dx: int, dy: int) -> None:
         logger.debug(f"[CONTROLLER] Mouse scroll ({dx}, {dy}) via {self._backend}")
-        if (
-            self._virtual_mode
-            and self._remote_target_x is not None
-            and self._remote_target_y is not None
-        ):
-            self._warp_to(self._remote_target_x, self._remote_target_y)
+        if self._virtual_mode:
+            return
 
         if self._uinput is not None and ecodes is not None:
             if dy != 0:

@@ -775,10 +775,16 @@ def test_mouse_controller_virtual_mode():
     assert mc._remote_target_x == 450
     assert mc._remote_target_y == 250
 
-    # click should warp to the recorded coordinates and click
+    # click in virtual mode should NOT warp or trigger host mouse click
     mc.apply(InputObject(type=InputType.MOUSE, data={"click:left:1"}))
-    assert mock_pynput_ctrl.position == (450, 250)
-    mock_pynput_ctrl.press.assert_called_once_with(Button.left)
+    assert mock_pynput_ctrl.position != (450, 250)
+    mock_pynput_ctrl.press.assert_not_called()
+
+    # scroll and rel move in virtual mode should NOT affect host mouse
+    mc.apply(InputObject(type=InputType.MOUSE, data={"scroll:0,1"}))
+    mock_pynput_ctrl.scroll.assert_not_called()
+    mc.apply(InputObject(type=InputType.MOUSE, data={"move:10,20"}))
+    mock_pynput_ctrl.move.assert_not_called()
 
     mc.close()
 
@@ -809,6 +815,51 @@ async def test_input_receiver_overlay_forwarding():
 
     await receiver.stop()
     mock_overlay.stop.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_mouse_capture_renderer_queue_scaling():
+    import asyncio
+    import queue
+    from unittest.mock import MagicMock
+    from input_control.mouse_capture import MouseCapture
+
+    mock_renderer = MagicMock()
+    mock_q = queue.Queue()
+    mock_renderer.mouse_event_queue = mock_q
+    mock_renderer.source_size = (1920, 1080)
+
+    enqueued = []
+
+    def fake_enqueue(obj):
+        enqueued.append(obj)
+
+    mc = MouseCapture()
+    await mc.start(enqueue=fake_enqueue, renderer=mock_renderer)
+    assert mc._backend == "renderer_window"
+
+    # 1. Test move event: 640, 360 in 1280x720 frame -> maps to 960, 540 in 1920x1080
+    mc._process_renderer_event(("move", 640, 360, 1280, 720))
+    await asyncio.sleep(0.01)
+    assert len(enqueued) == 1
+    assert "move_abs:960,540" in enqueued[0].data
+
+    # 2. Test click event: bottom-right (1280, 720) in 1280x720 frame -> clamped to 1919, 1079
+    mc._process_renderer_event(("click", "left", 1, 1280, 720, 1280, 720))
+    await asyncio.sleep(0.01)
+    assert len(enqueued) == 3
+    assert "move_abs:1919,1079" in enqueued[1].data
+    assert "click:left:1" in enqueued[2].data
+
+    # 3. Test scroll event
+    mc._process_renderer_event(("scroll", 0, 1, 100, 100, 1280, 720))
+    await asyncio.sleep(0.01)
+    assert len(enqueued) == 4
+    assert "scroll:0,1" in enqueued[3].data
+
+    await mc.stop()
+    assert not mc._is_running()
+
 
 
 

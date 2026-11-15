@@ -572,3 +572,15 @@ def test_pipewire_capture_burns_cursor():
     assert burned is not None
     assert (burned == 255).any()
 
+
+def test_screen_renderer_mouse_event_queue():
+    with patch("cv2.namedWindow"), patch("cv2.imshow"), patch("cv2.waitKey", return_value=0), patch(
+        "cv2.getWindowProperty", return_value=1.0
+    ), patch("cv2.destroyWindow"):
+        renderer = ScreenRenderer()
+        assert renderer.mouse_event_queue is None
+        renderer.start()
+        assert renderer.mouse_event_queue is not None
+        renderer.close()
+        assert renderer.mouse_event_queue is None
+

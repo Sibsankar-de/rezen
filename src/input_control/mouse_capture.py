@@ -31,6 +31,7 @@ class MouseCapture:
         self._listener: Listener | None = None
         self._evdev_devices: list[Any] = []
         self._evdev_tasks: list[asyncio.Task] = []
+        self._renderer_task: asyncio.Task | None = None
         self._backend: str | None = None
         self._renderer: WindowContext | None = None
 
@@ -39,7 +40,7 @@ class MouseCapture:
         enqueue: Callable[[InputObject], Any],
         renderer: WindowContext | None = None,
     ) -> None:
-        """Start mouse capture using pynput (preferred) or evdev (fallback)."""
+        """Start mouse capture using renderer callback queue (preferred), pynput, or evdev (fallback)."""
         if self._is_running():
             logger.info("MouseCapture is already running.")
             return
@@ -47,6 +48,16 @@ class MouseCapture:
         self._loop = asyncio.get_running_loop()
         self._enqueue = enqueue
         self._renderer = renderer
+
+        if (
+            self._renderer is not None
+            and getattr(self._renderer, "mouse_event_queue", None) is not None
+        ):
+            self._backend = "renderer_window"
+            self._renderer_task = asyncio.create_task(self._renderer_read_loop())
+            logger.info("[CAPTURE] MouseCapture using dedicated renderer window callback queue.")
+            return
+
         session_type = self._log_environment()
 
         try:
@@ -66,6 +77,11 @@ class MouseCapture:
 
     async def stop(self) -> None:
         """Stop mouse capture."""
+        if self._renderer_task is not None:
+            self._renderer_task.cancel()
+            await asyncio.gather(self._renderer_task, return_exceptions=True)
+            self._renderer_task = None
+
         if self._evdev_tasks:
             await self._stop_evdev()
 
@@ -73,8 +89,76 @@ class MouseCapture:
             await self._stop_pynput()
 
     def _is_running(self) -> bool:
+        renderer_active = self._renderer_task is not None and not self._renderer_task.done()
         pynput_active = self._listener is not None and self._listener.is_alive()
-        return pynput_active or bool(self._evdev_tasks)
+        return renderer_active or pynput_active or bool(self._evdev_tasks)
+
+    async def _renderer_read_loop(self) -> None:
+        """Read mouse events from the OpenCV renderer window queue asynchronously."""
+        q = getattr(self._renderer, "mouse_event_queue", None)
+        if q is None:
+            return
+
+        loop = self._loop or asyncio.get_running_loop()
+        try:
+            while True:
+                event_tuple = await loop.run_in_executor(None, self._poll_renderer_queue, q)
+                if event_tuple is None:
+                    continue
+                self._process_renderer_event(event_tuple)
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.exception("[CAPTURE] Error reading renderer mouse event queue")
+
+    @staticmethod
+    def _poll_renderer_queue(q: Any) -> Any:
+        try:
+            return q.get(timeout=0.1)
+        except Exception:
+            return None
+
+    def _process_renderer_event(self, event_tuple: tuple[Any, ...]) -> None:
+        if self._renderer is None or self._enqueue is None:
+            return
+
+        kind = event_tuple[0]
+        if hasattr(self._renderer, "source_size"):
+            host_w, host_h = self._renderer.source_size
+        else:
+            host_w = settings.SCREEN_CAPTURE_MAX_WIDTH
+            host_h = settings.SCREEN_CAPTURE_MAX_HEIGHT
+
+        if kind == "move":
+            _, cx, cy, fw, fh = event_tuple
+            if fw <= 0 or fh <= 0:
+                return
+            scale_x = host_w / fw
+            scale_y = host_h / fh
+            hx = max(0, min(host_w - 1, round(cx * scale_x)))
+            hy = max(0, min(host_h - 1, round(cy * scale_y)))
+            self._enqueue_now(f"move_abs:{hx},{hy}")
+
+        elif kind == "click":
+            _, btn, state, cx, cy, fw, fh = event_tuple
+            if fw <= 0 or fh <= 0:
+                return
+            scale_x = host_w / fw
+            scale_y = host_h / fh
+            hx = max(0, min(host_w - 1, round(cx * scale_x)))
+            hy = max(0, min(host_h - 1, round(cy * scale_y)))
+            self._enqueue_now(f"move_abs:{hx},{hy}")
+            self._enqueue_now(f"click:{btn}:{state}")
+
+        elif kind == "scroll":
+            _, dx, dy, cx, cy, fw, fh = event_tuple
+            self._enqueue_now(f"scroll:{dx},{dy}")
+
+    def _enqueue_now(self, encoded: str) -> None:
+        if self._loop is None or self._loop.is_closed() or self._enqueue is None:
+            return
+        event = InputObject(type=InputType.MOUSE, data={encoded})
+        self._loop.call_soon_threadsafe(self._enqueue, event)
 
     def _log_environment(self) -> str:
         session_type = os.environ.get("XDG_SESSION_TYPE", "unknown")
