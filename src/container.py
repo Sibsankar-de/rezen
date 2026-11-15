@@ -108,6 +108,10 @@ class Container:
                 connection_service=self.connection_service,
                 device_service=self.device_service,
             )
+            if self._input_service is not None and hasattr(
+                self._input_service, "set_screen_cast_service"
+            ):
+                self._input_service.set_screen_cast_service(self._screen_cast_service)
         return self._screen_cast_service
 
     @property
@@ -118,6 +122,7 @@ class Container:
                 connection_manager=self.connection_manager,
                 connection_service=self.connection_service,
                 device_service=self.device_service,
+                screen_cast_service=self._screen_cast_service,
             )
         return self._input_service
 

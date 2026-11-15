@@ -102,6 +102,16 @@ def main():
     win.move(-100, -100)
     win.show_all()
 
+    target_pos = [None, None]
+    move_scheduled = [False]
+
+    def _do_move():
+        move_scheduled[0] = False
+        tx, ty = target_pos[0], target_pos[1]
+        if tx is not None and ty is not None:
+            win.move(tx, ty)
+        return False
+
     def stdin_listener():
         for line in sys.stdin:
             line = line.strip()
@@ -111,14 +121,17 @@ def main():
             cmd = parts[0]
             if cmd == "move" and len(parts) >= 3:
                 try:
-                    x, y = int(parts[1]), int(parts[2])
-                    GLib.idle_add(win.move, x, y)
+                    target_pos[0] = int(parts[1])
+                    target_pos[1] = int(parts[2])
+                    if not move_scheduled[0]:
+                        move_scheduled[0] = True
+                        GLib.idle_add(_do_move, priority=GLib.PRIORITY_HIGH)
                 except ValueError:
                     pass
             elif cmd == "click" and len(parts) >= 3:
                 pressed = parts[2] == "1"
                 pb = click_pixbuf if pressed else normal_pixbuf
-                GLib.idle_add(image.set_from_pixbuf, pb)
+                GLib.idle_add(image.set_from_pixbuf, pb, priority=GLib.PRIORITY_HIGH)
             elif cmd == "quit":
                 GLib.idle_add(Gtk.main_quit)
                 break

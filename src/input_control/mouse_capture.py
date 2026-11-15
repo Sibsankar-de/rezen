@@ -105,6 +105,17 @@ class MouseCapture:
                 event_tuple = await loop.run_in_executor(None, self._poll_renderer_queue, q)
                 if event_tuple is None:
                     continue
+                # Coalesce consecutive move events to eliminate queue latency
+                while not q.empty():
+                    try:
+                        next_tuple = q.get_nowait()
+                        if next_tuple[0] == "move" and event_tuple[0] == "move":
+                            event_tuple = next_tuple
+                        else:
+                            self._process_renderer_event(event_tuple)
+                            event_tuple = next_tuple
+                    except Exception:
+                        break
                 self._process_renderer_event(event_tuple)
         except asyncio.CancelledError:
             pass
@@ -130,25 +141,37 @@ class MouseCapture:
             host_h = settings.SCREEN_CAPTURE_MAX_HEIGHT
 
         if kind == "move":
-            _, cx, cy, fw, fh = event_tuple
+            if len(event_tuple) >= 7:
+                _, cx, cy, fw, fh, nx, ny = event_tuple[:7]
+            else:
+                _, cx, cy, fw, fh = event_tuple[:5]
+                nx = cx / fw if fw > 0 else 0.0
+                ny = cy / fh if fh > 0 else 0.0
+
             if fw <= 0 or fh <= 0:
                 return
             scale_x = host_w / fw
             scale_y = host_h / fh
             hx = max(0, min(host_w - 1, round(cx * scale_x)))
             hy = max(0, min(host_h - 1, round(cy * scale_y)))
-            self._enqueue_now(f"move_abs:{hx},{hy}")
+            self._enqueue_now(f"move_abs:{hx},{hy}:{nx:.6f},{ny:.6f}")
 
         elif kind == "click":
-            _, btn, state, cx, cy, fw, fh = event_tuple
+            if len(event_tuple) >= 8:
+                _, btn, state, cx, cy, fw, fh, nx, ny = event_tuple[:9]
+            else:
+                _, btn, state, cx, cy, fw, fh = event_tuple[:7]
+                nx = cx / fw if fw > 0 else 0.0
+                ny = cy / fh if fh > 0 else 0.0
+
             if fw <= 0 or fh <= 0:
                 return
             scale_x = host_w / fw
             scale_y = host_h / fh
             hx = max(0, min(host_w - 1, round(cx * scale_x)))
             hy = max(0, min(host_h - 1, round(cy * scale_y)))
-            self._enqueue_now(f"move_abs:{hx},{hy}")
-            self._enqueue_now(f"click:{btn}:{state}")
+            self._enqueue_now(f"move_abs:{hx},{hy}:{nx:.6f},{ny:.6f}")
+            self._enqueue_now(f"click:{btn}:{state}:{hx},{hy}:{nx:.6f},{ny:.6f}")
 
         elif kind == "scroll":
             _, dx, dy, cx, cy, fw, fh = event_tuple

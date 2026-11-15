@@ -775,9 +775,18 @@ def test_mouse_controller_virtual_mode():
     assert mc._remote_target_x == 450
     assert mc._remote_target_y == 250
 
+    # move_abs with normalized payload
+    mc.apply(InputObject(type=InputType.MOUSE, data={"move_abs:500,300:0.3,0.3"}))
+    assert mc._remote_target_x == 500
+    assert mc._remote_target_y == 300
+
     # click in virtual mode should NOT warp or trigger host mouse click
     mc.apply(InputObject(type=InputType.MOUSE, data={"click:left:1"}))
     assert mock_pynput_ctrl.position != (450, 250)
+    mock_pynput_ctrl.press.assert_not_called()
+
+    # click with normalized payload
+    mc.apply(InputObject(type=InputType.MOUSE, data={"click:left:1:500,300:0.3,0.3"}))
     mock_pynput_ctrl.press.assert_not_called()
 
     # scroll and rel move in virtual mode should NOT affect host mouse
@@ -842,14 +851,14 @@ async def test_mouse_capture_renderer_queue_scaling():
     mc._process_renderer_event(("move", 640, 360, 1280, 720))
     await asyncio.sleep(0.01)
     assert len(enqueued) == 1
-    assert "move_abs:960,540" in enqueued[0].data
+    assert any(d.startswith("move_abs:960,540") for d in enqueued[0].data)
 
     # 2. Test click event: bottom-right (1280, 720) in 1280x720 frame -> clamped to 1919, 1079
     mc._process_renderer_event(("click", "left", 1, 1280, 720, 1280, 720))
     await asyncio.sleep(0.01)
     assert len(enqueued) == 3
-    assert "move_abs:1919,1079" in enqueued[1].data
-    assert "click:left:1" in enqueued[2].data
+    assert any(d.startswith("move_abs:1919,1079") for d in enqueued[1].data)
+    assert any(d.startswith("click:left:1") for d in enqueued[2].data)
 
     # 3. Test scroll event
     mc._process_renderer_event(("scroll", 0, 1, 100, 100, 1280, 720))

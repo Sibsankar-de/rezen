@@ -1,3 +1,5 @@
+from typing import Any
+
 from models.input import InputObject, InputType
 
 from models.connection import Connection
@@ -23,13 +25,23 @@ class InputService:
         device_service: DeviceService,
         input_streamer: InputStreamer | None = None,
         input_receiver: InputReceiver | None = None,
+        screen_cast_service: Any = None,
     ):
         self._connection_manager = connection_manager
         self._connection_service = connection_service
         self._device_service = device_service
+        self._screen_cast_service = screen_cast_service
 
         self._input_streamer = input_streamer
         self._input_receiver = input_receiver
+
+    def set_screen_cast_service(self, sc_service: Any) -> None:
+        """Dynamically link screen cast service for pointer burning."""
+        self._screen_cast_service = sc_service
+        if self._input_receiver is not None and hasattr(
+            sc_service, "set_remote_pointer"
+        ):
+            self._input_receiver.set_pointer_callback(sc_service.set_remote_pointer)
 
     @property
     def input_streamer(self) -> InputStreamer:
@@ -82,6 +94,18 @@ class InputService:
     async def start_receiver(self) -> None:
         """Start the input receiver"""
         logger.info("Starting input receiver...")
+        if self._screen_cast_service is not None:
+            if hasattr(self._screen_cast_service, "set_remote_pointer"):
+                self.input_receiver.set_pointer_callback(
+                    self._screen_cast_service.set_remote_pointer
+                )
+            if hasattr(self._screen_cast_service, "_get_host_screen_size"):
+                try:
+                    host_size = self._screen_cast_service._get_host_screen_size()
+                    if host_size and host_size[0] > 0 and host_size[1] > 0:
+                        self.input_receiver._host_screen_size = host_size
+                except Exception:
+                    pass
         await self.input_receiver.start()
         await self._connection_manager.subscribe(self._handle_input_packet)
         logger.info("Input receiver subscribed to incoming packets.")

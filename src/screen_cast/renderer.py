@@ -209,7 +209,10 @@ def _render_process_entry(
     fully complying with Qt/X11 GUI main-thread restrictions.
     """
     window_created = False
-    current_frame_size = [960, 540]
+    current_frame_size = [
+        settings.SCREEN_CAPTURE_MAX_WIDTH,
+        settings.SCREEN_CAPTURE_MAX_HEIGHT,
+    ]
 
     def _on_mouse(event: int, x: int, y: int, flags: int, param: Any) -> None:
         if mouse_event_queue is None:
@@ -219,6 +222,8 @@ def _render_process_entry(
             return
         cx = max(0, min(fw - 1, x))
         cy = max(0, min(fh - 1, y))
+        nx = cx / fw
+        ny = cy / fh
 
         try:
             if event == cv2.EVENT_MOUSEMOVE:
@@ -227,19 +232,31 @@ def _render_process_entry(
                         mouse_event_queue.get_nowait()
                     except Exception:
                         pass
-                mouse_event_queue.put_nowait(("move", cx, cy, fw, fh))
+                mouse_event_queue.put_nowait(("move", cx, cy, fw, fh, nx, ny))
             elif event == cv2.EVENT_LBUTTONDOWN:
-                mouse_event_queue.put_nowait(("click", "left", 1, cx, cy, fw, fh))
+                mouse_event_queue.put_nowait(
+                    ("click", "left", 1, cx, cy, fw, fh, nx, ny)
+                )
             elif event == cv2.EVENT_LBUTTONUP:
-                mouse_event_queue.put_nowait(("click", "left", 0, cx, cy, fw, fh))
+                mouse_event_queue.put_nowait(
+                    ("click", "left", 0, cx, cy, fw, fh, nx, ny)
+                )
             elif event == cv2.EVENT_RBUTTONDOWN:
-                mouse_event_queue.put_nowait(("click", "right", 1, cx, cy, fw, fh))
+                mouse_event_queue.put_nowait(
+                    ("click", "right", 1, cx, cy, fw, fh, nx, ny)
+                )
             elif event == cv2.EVENT_RBUTTONUP:
-                mouse_event_queue.put_nowait(("click", "right", 0, cx, cy, fw, fh))
+                mouse_event_queue.put_nowait(
+                    ("click", "right", 0, cx, cy, fw, fh, nx, ny)
+                )
             elif event == cv2.EVENT_MBUTTONDOWN:
-                mouse_event_queue.put_nowait(("click", "middle", 1, cx, cy, fw, fh))
+                mouse_event_queue.put_nowait(
+                    ("click", "middle", 1, cx, cy, fw, fh, nx, ny)
+                )
             elif event == cv2.EVENT_MBUTTONUP:
-                mouse_event_queue.put_nowait(("click", "middle", 0, cx, cy, fw, fh))
+                mouse_event_queue.put_nowait(
+                    ("click", "middle", 0, cx, cy, fw, fh, nx, ny)
+                )
             elif event == cv2.EVENT_MOUSEWHEEL:
                 delta = 1 if flags > 0 else -1
                 mouse_event_queue.put_nowait(("scroll", 0, delta, cx, cy, fw, fh))

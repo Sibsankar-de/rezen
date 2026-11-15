@@ -40,6 +40,8 @@ class FrameSource(Protocol):
 
     def capture(self) -> np.ndarray: ...
 
+    def set_remote_pointer(self, x: int, y: int, clicked: bool = False) -> None: ...
+
     def close(self) -> None: ...
 
 
@@ -109,6 +111,8 @@ def _burn_cursor_to_frame(
     orig_w: int,
     orig_h: int,
     size: int = 18,
+    fill_color: tuple[int, int, int, int] = (255, 255, 255, 255),
+    outline_color: tuple[int, int, int, int] = (0, 0, 0, 255),
 ) -> None:
     if cursor_x < 0 or cursor_y < 0:
         return
@@ -132,8 +136,8 @@ def _burn_cursor_to_frame(
         ],
         dtype=np.int32,
     )
-    cv2.fillPoly(frame, [pts], (255, 255, 255, 255))
-    cv2.polylines(frame, [pts], isClosed=True, color=(0, 0, 0, 255), thickness=2, lineType=cv2.LINE_AA)
+    cv2.fillPoly(frame, [pts], fill_color)
+    cv2.polylines(frame, [pts], isClosed=True, color=outline_color, thickness=2, lineType=cv2.LINE_AA)
 
 
 class ScreenCapture:
@@ -177,6 +181,7 @@ class ScreenCapture:
         self._closed = False
         self._blank_frames = 0
         self._warned_blank = False
+        self._remote_pointer: tuple[int, int, bool] | None = None
 
         logger.info(
             f"ScreenCapture started using MSS monitor "
@@ -232,6 +237,10 @@ class ScreenCapture:
             f"(streaming continues). Use an X11 session to capture."
         )
 
+    def set_remote_pointer(self, x: int, y: int, clicked: bool = False) -> None:
+        """Update remote pointer position to burn onto frames."""
+        self._remote_pointer = (int(x), int(y), bool(clicked))
+
     def capture(self) -> np.ndarray:
         """
         Capture the current screen.
@@ -245,14 +254,26 @@ class ScreenCapture:
         frame = np.asarray(screenshot)
         self._check_usable(frame)
 
-        if self._mouse_controller is not None:
+        if self._mouse_controller is not None or self._remote_pointer is not None:
             try:
-                pos = self._mouse_controller.position
-                if pos is not None:
-                    if not frame.flags.writeable:
-                        frame = frame.copy()
+                if not frame.flags.writeable:
+                    frame = frame.copy()
+                if self._mouse_controller is not None:
+                    pos = self._mouse_controller.position
+                    if pos is not None:
+                        _burn_cursor_to_frame(
+                            frame, round(pos[0]), round(pos[1]), self._width, self._height
+                        )
+                if self._remote_pointer is not None:
+                    rx, ry, clicked = self._remote_pointer
+                    fill = (255, 255, 255, 255) if clicked else (118, 230, 0, 255)
                     _burn_cursor_to_frame(
-                        frame, round(pos[0]), round(pos[1]), self._width, self._height
+                        frame,
+                        round(rx),
+                        round(ry),
+                        self._width,
+                        self._height,
+                        fill_color=fill,
                     )
             except (OSError, RuntimeError):
                 pass

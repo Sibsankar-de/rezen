@@ -195,10 +195,13 @@ class MouseController:
                 dx, dy = _parse_int_pair(rest)
                 self._do_move(dx, dy)
             elif kind == "move_abs":
-                x, y = _parse_int_pair(rest)
+                coords = rest.split(":")[0]
+                x, y = _parse_int_pair(coords)
                 self._do_move_abs(x, y)
             elif kind == "click":
-                btn_name, _, state = rest.partition(":")
+                parts = rest.split(":")
+                btn_name = parts[0]
+                state = parts[1] if len(parts) > 1 else "0"
                 pressed = state.strip() == "1"
                 self._do_click(btn_name, pressed)
             elif kind == "scroll":
