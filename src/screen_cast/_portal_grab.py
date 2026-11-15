@@ -57,18 +57,30 @@ def _screen_cast():
     )
 
 
+_pending_callbacks = {}
+
+
+def _on_response(response, results, path=None):
+    cb = _pending_callbacks.pop(str(path), None)
+    if cb:
+        cb(int(response), dict(results) if results else {})
+
+
+_bus.add_signal_receiver(
+    _on_response,
+    dbus_interface="org.freedesktop.portal.Request",
+    signal_name="Response",
+    path_keyword="path",
+)
+
+
 def _recv(path, key, then=None):
-    def handler(response, results):
-        _results[key] = (int(response), dict(results) if results else {})
+    def on_done(code, res):
+        _results[key] = (code, res)
         if then:
             GLib.idle_add(then, _results[key])
 
-    _bus.add_signal_receiver(
-        handler,
-        dbus_interface="org.freedesktop.portal.Request",
-        signal_name="Response",
-        path=path,
-    )
+    _pending_callbacks[str(path)] = on_done
 
 
 def _select_sources(result):

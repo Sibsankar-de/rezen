@@ -10,7 +10,7 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
-from gi.repository import GdkPixbuf, Gio, GLib, Gtk
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk
 
 
 def _hex_to_rgba(hex_code: str) -> tuple[float, float, float, float]:
@@ -67,13 +67,14 @@ def main():
     click_rgba = (1.0, 1.0, 1.0, 1.0)
     outline_rgba = (0.0, 0.0, 0.0, 1.0)
 
-    win = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+    win = Gtk.Window(type=Gtk.WindowType.POPUP)
     win.set_title("Rezen Remote Pointer")
     win.set_decorated(False)
     win.set_keep_above(True)
     win.set_app_paintable(True)
     win.set_accept_focus(False)
     win.set_focus_on_map(False)
+    win.set_type_hint(Gdk.WindowTypeHint.TOOLTIP)
 
     screen = win.get_screen()
     visual = screen.get_rgba_visual()
@@ -97,6 +98,7 @@ def main():
     if hasattr(gdk_win, "set_pass_through"):
         gdk_win.set_pass_through(True)
 
+    win.move(-100, -100)
     win.show_all()
 
     def stdin_listener():
