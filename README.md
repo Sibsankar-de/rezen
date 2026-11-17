@@ -106,3 +106,15 @@ uv run mypy src/
 ```
 
 Logs are written to `logs/rezen.log`.
+
+---
+
+## Contributing
+
+Contributions to Rezen are welcome! Whether it's fixing bugs, improving existing features, adding new functionality, or improving documentation, your contributions are appreciated.
+
+Before contributing, please read the [Contributing Guidelines](CONTRIBUTING.md) for development setup instructions, coding conventions, testing requirements, and the pull request process.
+
+If you find a bug or have a feature suggestion, feel free to [open an issue](https://github.com/Sibsankar-de/rezen/issues).
+
+
