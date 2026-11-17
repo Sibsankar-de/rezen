@@ -30,10 +30,10 @@ class DeviceListItem(ListItem):
 
     def compose(self) -> ComposeResult:
         yield Label(
-            f"🖥  {self.device.name} ({self.device.id})", classes="device-item-title"
+            f"{self.device.name}", classes="device-item-title"
         )
         yield Label(
-            f"IP: {self.device.ip}:{self.device.port}  |  OS: {self.device.os}  |  Host: {self.device.hostname}",
+            f"{self.device.ip}:{self.device.port}  {self.device.os}  {self.device.hostname}",
             classes="device-item-subtitle",
         )
 
@@ -64,22 +64,14 @@ class DiscoverScreen(Screen):
             with Center():
                 with Middle():
                     with Vertical(id="discover-card"):
-                        yield Label("🔍 Discovered Devices", id="discover-title")
-                        yield Label(
-                            "Continuously listening for active Rezen devices on the local network...",
-                            id="discover-subtitle",
-                        )
-
-                        yield Label("Ready to scan", id="scan-status")
-
+                        with Horizontal(classes="card-nav"):
+                            yield Label("Discover Devices", classes="card-nav-title")
+                            yield Button("< Back", id="btn-back", classes="btn-back-small")
+                        yield Label("Listening...", id="scan-status")
                         with VerticalScroll(id="device-list-container"):
                             yield ListView(id="device-list-view")
-
                         with Horizontal(id="discover-actions"):
-                            yield Button("Scan Now", id="btn-scan", variant="success")
-                            yield Button(
-                                "Back to Home", id="btn-back", variant="primary"
-                            )
+                            yield Button("Refresh", id="btn-scan", variant="success")
 
     async def on_mount(self) -> None:
         """Start continuous discovery and periodic pruning of expired devices."""

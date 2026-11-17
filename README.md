@@ -1,53 +1,108 @@
 # Rezen
 
-Remote device and screen control over the local network.
+Rezen is an open-source, cross-platform tool for remote device and screen control over a local network. It lets you view and control machines across different operating systems (such as Linux and Windows) from your own device, with no accounts, no cloud, and no relay servers involved. Both devices just need to be on the same LAN.
 
-## Setup
+It handles LAN device discovery automatically, streams the host screen using H.264 over TCP, and forwards keyboard and mouse input back to the host. It ships with a terminal UI as well as headless CLI modes for running on servers or scripts.
 
-Requires Python 3.12 or newer and [uv](https://docs.astral.sh/uv/).
+---
+
+## Install
+
+**Linux**
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/Sibsankar-de/rezen/main/install.sh | bash
+```
+
+After installation, open a new terminal or run `source ~/.bashrc` to pick up the `rezen` command.
+
+> To install into a custom location:
+>
+> ```bash
+> REZEN_INSTALL_DIR=/opt/rezen REZEN_BIN_DIR=/usr/local/bin \
+>   curl -fsSL https://raw.githubusercontent.com/Sibsankar-de/rezen/main/install.sh | bash
+> ```
+
+**Windows**
+
+Run in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/Sibsankar-de/rezen/main/install.ps1 | iex
+```
+
+After installation, open a new terminal to pick up the `rezen` command.
+
+---
+
+## Run
+
+```bash
+rezen
+```
+
+This opens the terminal UI where you can see devices on the network, connect to one, and start a screen share session.
+
+### Headless modes
+
+**Broadcast your device on the network (no TUI):**
+
+```bash
+rezen --start-broadcast
+```
+
+**Scan for other Rezen devices (no TUI):**
+
+```bash
+rezen --start-discover
+```
+
+Both run continuously until you press `Ctrl+C`.
+
+### CLI flags
+
+| Flag                | Short | Description                                           |
+| ------------------- | ----- | ----------------------------------------------------- |
+| `--start-broadcast` | `-b`  | Run as a headless broadcaster                         |
+| `--start-discover`  | `-d`  | Run as a headless device scanner                      |
+| `--interval`        | `-i`  | Heartbeat / scan interval in seconds (default: `2.0`) |
+| `--timeout`         | `-t`  | Per-scan timeout in seconds (default: `2.0`)          |
+
+---
+
+## Dev Setup
+
+**Prerequisites:** Python 3.12+, [uv](https://docs.astral.sh/uv/), git
+
+```bash
+git clone git@github.com:Sibsankar-de/rezen.git
+cd rezen
 uv sync
 ```
 
-### Screen capture on Wayland
-
-Wayland compositors do not let X11 clients read the framebuffer, so Rezen shares
-the screen through the XDG Desktop Portal instead. Install the two packages that
-provide the PipeWire stream reader:
-
-```bash
-sudo apt install gst-launch-1.0 gstreamer1.0-pipewire
-```
-
-The portal bindings (`dbus`, `gi`) are taken from the distribution's Python 3,
-which Rezen locates automatically.
-
-The first connection on a Wayland session shows a GNOME **Share** dialog that must
-be approved. The stream ends when you disconnect.
-
-### Keyboard control on Wayland (Ubuntu)
-
-If using Ubuntu with Wayland, run these commands to allow keyboard capture and injection:
-
-```bash
-sudo usermod -aG input $USER
-echo 'KERNEL=="uinput", GROUP="input", MODE="0660"' | sudo tee /etc/udev/rules.d/99-uinput.rules
-sudo udevadm control --reload-rules && sudo udevadm trigger
-```
-
-Log out and back in (or run `newgrp input`) to apply changes.
-
-On an X11 session nothing extra is needed.
-
-## Running
+**Run:**
 
 ```bash
 uv run rezen
 ```
 
-_Or, if installed globally or into an active virtual environment:_
+**Run tests:**
 
 ```bash
-rezen
+uv run pytest
 ```
+
+**Lint and format:**
+
+```bash
+uv run ruff check .
+uv run ruff format .
+```
+
+**Type check:**
+
+```bash
+uv run mypy src/
+```
+
+Logs are written to `logs/rezen.log`.

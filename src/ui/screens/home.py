@@ -1,7 +1,7 @@
 from textual.app import ComposeResult
 from textual.containers import Center, Middle, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, Label
+from textual.widgets import Button, Label, Static
 
 from container import container
 from utils.logger import get_logger
@@ -10,6 +10,14 @@ from .discover import DiscoverScreen
 from ..layout import BaseLayout
 
 logger = get_logger(__name__)
+
+ASCII_LOGO = (
+    "  ____                              \n"
+    " |  _ \\    ___   ____   ___   _ __  \n"
+    " | |_) |  / _ \\ |_  /  / _ \\ | '_ \\ \n"
+    " |  _ <  |  __/  / /  |  __/ | | | |\n"
+    " |_| \\_\\  \\___| /___|  \\___| |_| |_|"
+)
 
 
 class HomeScreen(Screen):
@@ -20,19 +28,19 @@ class HomeScreen(Screen):
             with Center():
                 with Middle():
                     with Vertical(id="welcome-card"):
-                        yield Label("Welcome to Rezen", id="welcome-title")
+                        yield Static(ASCII_LOGO, id="logo")
                         yield Label(
-                            "Remote Device & Screen Control Tool",
+                            "Remote Device & Screen Control",
                             id="welcome-subtitle",
                         )
                         with Vertical(id="home-options"):
                             yield Button(
-                                "📡 Start broadcasting",
+                                "Start Broadcasting",
                                 id="btn-broadcast",
                                 variant="primary",
                             )
                             yield Button(
-                                "🔍 Discover devices",
+                                "Discover Devices",
                                 id="btn-discover",
                                 variant="success",
                             )

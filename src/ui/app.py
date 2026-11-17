@@ -23,7 +23,7 @@ class RezenApp(App):
     ]
 
     BINDINGS = [
-        Binding("q", "quit", "Quit", show=True),
+        Binding("ctrl+q", "quit", "Quit", show=True),
     ]
 
     SCREENS = {
