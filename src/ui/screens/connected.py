@@ -1,6 +1,6 @@
 from typing import Optional
 from textual.app import ComposeResult
-from textual.containers import Center, Middle, Vertical
+from textual.containers import Center, Horizontal, Middle, Vertical
 from textual.screen import Screen
 from textual.timer import Timer
 from textual.widgets import Button, Label
@@ -49,7 +49,9 @@ class ConnectedScreen(Screen):
             with Center():
                 with Middle():
                     with Vertical(id="connected-card"):
-                        yield Label("🔗 Connected", id="connected-title")
+                        with Horizontal(classes="card-nav"):
+                            yield Label("Connected", classes="card-nav-title")
+                            yield Button("Disconnect", id="btn-disconnect", classes="btn-back-small")
                         yield Label(
                             f"Connected to {self._device.name} ({self._device.id})",
                             id="connected-subtitle",
@@ -64,10 +66,9 @@ class ConnectedScreen(Screen):
                             else "Receiving screen"
                         )
                         yield Label(
-                            f"Status: Active ({role_text}) (id: {self._connection.id})",
+                            f"Active  ({role_text})  id: {self._connection.id}",
                             id="connected-status",
                         )
-                        yield Button("Disconnect", id="btn-disconnect", variant="error")
 
     def on_mount(self) -> None:
         """Poll the streaming pipeline health while connected."""
@@ -107,7 +108,7 @@ class ConnectedScreen(Screen):
             )
 
     async def _handle_disconnect(self, _connection: Connection):
-        """Discoonect handler"""
+        """Disconnect handler"""
         if not self._connected:
             return
 

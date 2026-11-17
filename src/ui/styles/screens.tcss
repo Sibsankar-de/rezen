@@ -1,105 +1,164 @@
-/* Screen Styles - HomeScreen, BroadcastScreen, DiscoverScreen, ConnectingScreen */
-
 HomeScreen, BroadcastScreen, DiscoverScreen, ConnectingScreen, ConnectedScreen {
     align: center middle;
     height: 100%;
     width: 100%;
 }
 
-#welcome-card, #broadcast-card, #discover-card, #connecting-card, #connected-card {
-    width: 70;
+/* ── Home ─────────────────────────────────────────────────── */
+
+#welcome-card {
+    width: 56;
     height: auto;
-    border: heavy $accent;
+    border: tall $accent;
     background: $surface;
     padding: 1 2;
     align: center middle;
 }
 
-#welcome-title, #broadcast-title, #discover-title, #connecting-title, #connected-title {
-    text-style: bold;
+#logo {
     color: $accent;
+    text-align: center;
     content-align: center middle;
+    width: 100%;
+    height: auto;
     margin-bottom: 1;
 }
 
-#welcome-subtitle, #broadcast-subtitle, #discover-subtitle, #connecting-subtitle, #connected-subtitle {
+#welcome-subtitle {
     color: $text-muted;
     content-align: center middle;
+    text-align: center;
+    width: 100%;
     margin-bottom: 1;
 }
 
 #home-options {
     width: 100%;
+    height: auto;
     align: center middle;
     margin-top: 1;
 }
 
 #home-options Button {
-    margin: 1 0;
-    width: 32;
+    margin: 0 0 1 0;
+    width: 36;
 }
 
-#broadcast-info {
+/* ── Other screens ────────────────────────────────────────── */
+
+#broadcast-card, #discover-card, #connecting-card, #connected-card {
+    width: 60;
+    height: auto;
+    border: tall $accent;
+    background: $surface;
+    padding: 0 2 1 2;
+    align: center middle;
+}
+
+/* Top nav row: title + back button */
+.card-nav {
+    width: 100%;
+    height: auto;
+    align: left middle;
+    padding: 1 0 0 0;
+    margin-bottom: 1;
+}
+
+.card-nav-title {
+    text-style: bold;
+    color: $accent;
+    width: 1fr;
+    content-align: left middle;
+}
+
+.btn-back-small {
+    width: auto;
+    min-width: 0;
+    height: 1;
+    border: none;
+    background: transparent;
+    color: $text-muted;
+    padding: 0 1;
+}
+
+.btn-back-small:hover {
+    color: $accent;
+    background: $panel;
+}
+
+#broadcast-info, #connecting-info, #connected-info {
     color: $text;
     content-align: center middle;
     margin: 1 0;
-    padding: 1;
-    border: dashed $accent;
+    padding: 0 1;
+    border: dashed $panel;
+    text-align: center;
 }
 
+#broadcast-requests-label {
+    color: $text-muted;
+    margin-top: 1;
+}
+
+#request-list-container, #device-list-container {
+    height: 5;
+    width: 100%;
+    border: solid $panel;
+    margin-bottom: 1;
+    background: $background;
+}
+
+#request-list-view, #device-list-view {
+    height: auto;
+    width: 100%;
+}
+
+RequestListItem, DeviceListItem {
+    padding: 0 1;
+    height: auto;
+}
+
+.request-item-title, .device-item-title {
+    text-style: bold;
+    color: $text;
+}
+
+.request-item-subtitle, .device-item-subtitle {
+    color: $text-muted;
+}
+
+#broadcast-status {
+    color: $success;
+    content-align: center middle;
+    text-align: center;
+    margin: 1 0;
+    text-wrap: wrap;
+}
+
+/* discover */
 #scan-status {
     color: $accent;
     content-align: center middle;
+    text-align: center;
     margin-bottom: 1;
 }
 
 #device-list-container {
-    height: 6;
-    width: 100%;
-    border: solid $accent;
-    margin-bottom: 1;
-    background: $panel;
-}
-
-#device-list-view {
-    height: auto;
-    width: 100%;
-}
-
-DeviceListItem {
-    padding: 1 2;
-    height: auto;
-}
-
-.device-item-title {
-    text-style: bold;
-    color: $accent;
-}
-
-.device-item-subtitle {
-    color: $text-muted;
+    height: 7;
 }
 
 #discover-actions {
     width: 100%;
     height: auto;
     align: center middle;
+    margin-top: 1;
 }
 
 #discover-actions Button {
     margin: 0 1;
 }
 
-/* ── ConnectingScreen ─────────────────────────────────────── */
-
-#connecting-info {
-    color: $text;
-    content-align: center middle;
-    margin: 1 0;
-    padding: 1;
-    border: dashed $accent;
-}
-
+/* connecting */
 #connecting-spinner {
     margin: 1 0;
     height: 1;
@@ -108,65 +167,16 @@ DeviceListItem {
 #connecting-status {
     color: $text-muted;
     content-align: center middle;
+    text-align: center;
     margin-bottom: 1;
     text-wrap: wrap;
 }
 
-/* ── ConnectedScreen ──────────────────────────────────────── */
-
-#connected-info {
-    color: $text;
-    content-align: center middle;
-    margin: 1 0;
-    padding: 1;
-    border: dashed $accent;
-}
-
+/* connected */
 #connected-status {
     color: $success;
     content-align: center middle;
+    text-align: center;
     margin-bottom: 1;
-    text-wrap: wrap;
-}
-
-/* ── BroadcastScreen – Incoming request list ──────────────── */
-
-#broadcast-requests-label {
-    color: $text-muted;
-    content-align: left middle;
-    margin-top: 1;
-}
-
-#request-list-container {
-    height: 5;
-    width: 100%;
-    border: solid $warning;
-    margin-bottom: 1;
-    background: $panel;
-}
-
-#request-list-view {
-    height: auto;
-    width: 100%;
-}
-
-RequestListItem {
-    padding: 1 2;
-    height: auto;
-}
-
-.request-item-title {
-    text-style: bold;
-    color: $warning;
-}
-
-.request-item-subtitle {
-    color: $text-muted;
-}
-
-#broadcast-status {
-    color: $success;
-    content-align: center middle;
-    margin: 0 0 1 0;
     text-wrap: wrap;
 }

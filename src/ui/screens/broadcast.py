@@ -2,7 +2,7 @@ import asyncio
 from typing import Optional
 from textual import work
 from textual.app import ComposeResult
-from textual.containers import Center, Middle, Vertical, VerticalScroll
+from textual.containers import Center, Horizontal, Middle, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Label, ListItem, ListView
 
@@ -29,10 +29,10 @@ class RequestListItem(ListItem):
 
     def compose(self) -> ComposeResult:
         yield Label(
-            f"📲  {self.device.name} ({self.device.id})", classes="request-item-title"
+            f"{self.device.name} ({self.device.id})", classes="request-item-title"
         )
         yield Label(
-            f"IP: {self.device.ip}:{self.device.port}  |  OS: {self.device.os}",
+            f"{self.device.ip}:{self.device.port}  {self.device.os}",
             classes="request-item-subtitle",
         )
 
@@ -63,23 +63,20 @@ class BroadcastScreen(Screen):
             with Center():
                 with Middle():
                     with Vertical(id="broadcast-card"):
-                        yield Label("📡 Broadcasting", id="broadcast-title")
+                        with Horizontal(classes="card-nav"):
+                            yield Label("Broadcasting", classes="card-nav-title")
+                            yield Button("< Back", id="btn-back", classes="btn-back-small")
                         yield Label(
-                            "Your device presence is being broadcasted on the local network.",
-                            id="broadcast-subtitle",
-                        )
-                        yield Label(
-                            f"Device ID: {device.id}  |  IP: {device.ip}  |  Port: {device.port}",
+                            f"{device.name}  |  {device.ip}:{device.port}",
                             id="broadcast-info",
                         )
                         yield Label(
-                            "Incoming connection requests:",
+                            "Incoming requests",
                             id="broadcast-requests-label",
                         )
                         with VerticalScroll(id="request-list-container"):
                             yield ListView(id="request-list-view")
                         yield Label("", id="broadcast-status")
-                        yield Button("Back to Home", id="btn-back", variant="primary")
 
     async def on_mount(self) -> None:
         """Start local network broadcast upon entering the screen."""
@@ -116,7 +113,7 @@ class BroadcastScreen(Screen):
 
         if self._pending_requests:
             self._set_status(
-                f"⚠️  {len(self._pending_requests)} pending request(s). Click to accept."
+                f"{len(self._pending_requests)} pending request(s). Click to accept."
             )
         else:
             self._set_status("")
@@ -150,12 +147,12 @@ class BroadcastScreen(Screen):
     async def _accept_connection(self, device: Device) -> None:
         """Accept the incoming connection request asynchronously."""
         logger.info(f"User accepted connection request from {device.name} ({device.ip})")
-        self._set_status(f"🔗 Accepting connection from {device.name}…")
+        self._set_status(f"Accepting connection from {device.name}...")
         try:
             connection = await self._connection_service.accept_connection(device)
             logger.info(f"Connection accepted successfully: id={connection.id} with {device.name}")
             self._set_status(
-                f"✅ Connected to {device.name} (connection id: {connection.id})"
+                f"Connected to {device.name} (connection id: {connection.id})"
             )
 
             # Stop presence broadcast immediately once connection is established
@@ -202,7 +199,7 @@ class BroadcastScreen(Screen):
             )
         except Exception as exc:
             logger.error(f"Failed to accept connection from {device.name}: {exc}", exc_info=True)
-            self._set_status(f"❌ Failed to accept connection from {device.name}: {exc}")
+            self._set_status(f"Failed to accept connection from {device.name}: {exc}")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-back":

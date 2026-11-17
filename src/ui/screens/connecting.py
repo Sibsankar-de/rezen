@@ -2,7 +2,7 @@ import asyncio
 from typing import Optional
 from textual import work
 from textual.app import ComposeResult
-from textual.containers import Center, Middle, Vertical
+from textual.containers import Center, Horizontal, Middle, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, Label, LoadingIndicator
 
@@ -48,18 +48,15 @@ class ConnectingScreen(Screen):
             with Center():
                 with Middle():
                     with Vertical(id="connecting-card"):
-                        yield Label("🔗 Connecting", id="connecting-title")
+                        with Horizontal(classes="card-nav"):
+                            yield Label("Connecting", classes="card-nav-title")
+                            yield Button("< Cancel", id="btn-cancel", classes="btn-back-small")
                         yield Label(
-                            f"Connecting to {self._device.name} ({self._device.id})",
-                            id="connecting-subtitle",
-                        )
-                        yield Label(
-                            f"IP: {self._device.ip}:{self._device.port}  |  OS: {self._device.os}",
+                            f"{self._device.name}  |  {self._device.ip}:{self._device.port}",
                             id="connecting-info",
                         )
                         yield LoadingIndicator(id="connecting-spinner")
                         yield Label("", id="connecting-status")
-                        yield Button("Cancel", id="btn-cancel", variant="error")
 
     async def on_mount(self) -> None:
         """Initiate the connection request once the screen is mounted."""
@@ -69,12 +66,12 @@ class ConnectingScreen(Screen):
     @work(exclusive=True, thread=False)
     async def _connect(self) -> None:
         """Send connection request and await acceptance."""
-        self._set_status("Sending connection request…")
+        self._set_status("Sending connection request...")
         try:
             await self._connection_service.request_connection(self._device)
             logger.info(f"Connection request sent to {self._device.name}; awaiting acceptance.")
             self._set_status(
-                f"Waiting for {self._device.name} to accept…"
+                f"Waiting for {self._device.name} to accept..."
             )
 
             # Poll for connection
@@ -93,7 +90,7 @@ class ConnectingScreen(Screen):
                 await self._connection_service.complete_connection(connection)
                 self._connection = connection
                 logger.info(f"Connected to {self._device.name} successfully (id: {connection.id}).")
-                self._set_status(f"✅ Connected to {self._device.name}!")
+                self._set_status(f"Connected.")
                 self._show_connected()
 
                 # Stop discovery now that connection is established
@@ -143,12 +140,12 @@ class ConnectingScreen(Screen):
                     )
                 )
             else:
-                self._set_status(f"❌ Connection to {self._device.name} timed out.")
+                self._set_status(f"Connection timed out.")
                 self._show_cancel_only()
 
         except Exception as exc:
             logger.error(f"Failed to connect to {self._device.name}: {exc}", exc_info=True)
-            self._set_status(f"❌ Failed to connect: {exc}")
+            self._set_status(f"Failed to connect: {exc}")
             self._show_cancel_only()
 
     def _set_status(self, text: str) -> None:
@@ -199,5 +196,3 @@ class ConnectingScreen(Screen):
                         exc_info=True,
                     )
             self.app.pop_screen()
-
-

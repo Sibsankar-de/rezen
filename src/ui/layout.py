@@ -1,17 +1,15 @@
 from textual.app import ComposeResult
 from textual.containers import Container
-from textual.widgets import Footer, Header
+from textual.widgets import Static
 
 
 class BaseLayout(Container):
-    """Base layout of the UI containing centered Header, main content area, and Footer."""
+    """Base layout of the UI containing centered main content area and slim footer bar."""
 
     def __init__(self, *children, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(*children, **kwargs)
         self._initial_children = children
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=False)
-        with Container(id="main-viewport"):
-            yield from self._initial_children
-        yield Footer()
+        yield from self._initial_children
+        yield Static(" [Ctrl+Q] Quit", id="footer-bar")
