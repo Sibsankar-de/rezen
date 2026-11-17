@@ -62,11 +62,6 @@ class ScreenCastService:
             await self._streamer.stop()
             self._streamer = None
 
-    def set_remote_pointer(self, x: int, y: int, clicked: bool = False) -> None:
-        """Forward remote pointer position to the streamer to burn into outgoing frames."""
-        if self._streamer is not None and hasattr(self._streamer, "set_remote_pointer"):
-            self._streamer.set_remote_pointer(x, y, clicked)
-
     def _get_host_screen_size(self) -> tuple[int, int]:
         """Determine host screen resolution using streamer or capture backend."""
         if self._streamer is not None:

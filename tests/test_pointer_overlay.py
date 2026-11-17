@@ -86,7 +86,7 @@ async def test_input_receiver_normalized_calibration():
     assert pointer_events[-1] == (960, 540, True)
 
 
-def test_pipewire_burns_both_host_and_remote_pointer():
+def test_pipewire_burns_host_pointer_only():
     cap = MagicMock(spec=PipeWireScreenCapture)
     cap._source_width = 1920
     cap._source_height = 1080
@@ -95,21 +95,16 @@ def test_pipewire_burns_both_host_and_remote_pointer():
     mock_mouse = MagicMock()
     mock_mouse.position = (400, 200)
     cap._mouse_controller = mock_mouse
-    cap._remote_pointer = (960, 540, False)
 
     # Create empty frame (all black)
     frame = np.zeros((720, 1280, 4), dtype=np.uint8)
     burned = PipeWireScreenCapture._apply_cursor(cap, frame)
 
     # In 1280x720 frame, host cursor (400, 200) maps to (267, 133)
-    # Remote cursor (960, 540) maps to (640, 360)
-    # Check that pixels are non-zero at both cursor positions
+    # Check that pixels are non-zero at host cursor position
     assert burned[133, 267].any()
-    assert burned[360, 640].any()
 
-    # Remote cursor has green fill (B=118, G=230, R=0, A=255)
-    # Pixel inside the remote cursor shape should have G > 200
-    green_area = burned[355:375, 635:655]
-    has_green = np.any((green_area[:, :, 1] > 200) & (green_area[:, :, 2] < 50))
-    assert has_green
+    # Verify no green remote pointer is burned into the frame
+    has_green = np.any((burned[:, :, 1] > 200) & (burned[:, :, 2] < 50))
+    assert not has_green
 

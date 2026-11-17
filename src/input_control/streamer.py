@@ -71,7 +71,7 @@ class InputStreamer:
             logger.warning("Input stream queue full, dropping event")
 
     async def _run_send_loop(self) -> None:
-        """Listen the queue and send the input objects"""
+        """Listen the queue and send the input objects with move event coalescing."""
         logger.info("[STREAMER] Send loop started.")
         while self._running:
             try:
@@ -80,13 +80,30 @@ class InputStreamer:
                 break
 
             try:
-                logger.info(
+                # Coalesce consecutive move_abs events to eliminate network queue latency
+                while not self._input_queue.empty():
+                    try:
+                        peek = self._input_queue.get_nowait()
+                        if (
+                            input_object.type == InputType.MOUSE
+                            and peek.type == InputType.MOUSE
+                            and any(d.startswith("move_abs:") for d in input_object.data)
+                            and any(d.startswith("move_abs:") for d in peek.data)
+                        ):
+                            self._input_queue.task_done()
+                            input_object = peek
+                        else:
+                            self._input_queue.task_done()
+                            await self._send(input_object)
+                            input_object = peek
+                            break
+                    except (asyncio.QueueEmpty, ValueError):
+                        break
+
+                logger.debug(
                     f"[STREAMER] Sending input event to network: {input_object.data}"
                 )
                 await self._send(input_object)
-                logger.info(
-                    f"[STREAMER] Successfully sent input event: {input_object.data}"
-                )
             except asyncio.CancelledError:
                 break
             except Exception:

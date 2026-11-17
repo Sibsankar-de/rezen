@@ -201,7 +201,6 @@ def _render_process_entry(
     window_name: str,
     win_geometry: Any,
     is_focused: Any,
-    mouse_event_queue: Any = None,
 ) -> None:
     """
     Dedicated renderer process main body.
@@ -209,63 +208,6 @@ def _render_process_entry(
     fully complying with Qt/X11 GUI main-thread restrictions.
     """
     window_created = False
-    current_frame_size = [
-        settings.SCREEN_CAPTURE_MAX_WIDTH,
-        settings.SCREEN_CAPTURE_MAX_HEIGHT,
-    ]
-
-    def _on_mouse(event: int, x: int, y: int, flags: int, param: Any) -> None:
-        if mouse_event_queue is None:
-            return
-        fw, fh = current_frame_size[0], current_frame_size[1]
-        if fw <= 0 or fh <= 0:
-            return
-        cx = max(0, min(fw - 1, x))
-        cy = max(0, min(fh - 1, y))
-        nx = cx / fw
-        ny = cy / fh
-
-        try:
-            if event == cv2.EVENT_MOUSEMOVE:
-                if mouse_event_queue.full():
-                    try:
-                        mouse_event_queue.get_nowait()
-                    except Exception:
-                        pass
-                mouse_event_queue.put_nowait(("move", cx, cy, fw, fh, nx, ny))
-            elif event == cv2.EVENT_LBUTTONDOWN:
-                mouse_event_queue.put_nowait(
-                    ("click", "left", 1, cx, cy, fw, fh, nx, ny)
-                )
-            elif event == cv2.EVENT_LBUTTONUP:
-                mouse_event_queue.put_nowait(
-                    ("click", "left", 0, cx, cy, fw, fh, nx, ny)
-                )
-            elif event == cv2.EVENT_RBUTTONDOWN:
-                mouse_event_queue.put_nowait(
-                    ("click", "right", 1, cx, cy, fw, fh, nx, ny)
-                )
-            elif event == cv2.EVENT_RBUTTONUP:
-                mouse_event_queue.put_nowait(
-                    ("click", "right", 0, cx, cy, fw, fh, nx, ny)
-                )
-            elif event == cv2.EVENT_MBUTTONDOWN:
-                mouse_event_queue.put_nowait(
-                    ("click", "middle", 1, cx, cy, fw, fh, nx, ny)
-                )
-            elif event == cv2.EVENT_MBUTTONUP:
-                mouse_event_queue.put_nowait(
-                    ("click", "middle", 0, cx, cy, fw, fh, nx, ny)
-                )
-            elif event == cv2.EVENT_MOUSEWHEEL:
-                delta = 1 if flags > 0 else -1
-                mouse_event_queue.put_nowait(("scroll", 0, delta, cx, cy, fw, fh))
-            elif event == cv2.EVENT_MOUSEHWHEEL:
-                delta = 1 if flags > 0 else -1
-                mouse_event_queue.put_nowait(("scroll", delta, 0, cx, cy, fw, fh))
-        except Exception:
-            pass
-
     try:
         try:
             cv2.startWindowThread()
@@ -274,7 +216,7 @@ def _render_process_entry(
 
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL | _KEEPRATIO_FLAG | _GUI_NORMAL_FLAG)
         cv2.resizeWindow(window_name, 960, 540)
-        cv2.setMouseCallback(window_name, _on_mouse)
+        cv2.setMouseCallback(window_name, lambda *args: None)
         window_created = True
 
         placeholder = np.zeros((540, 960, 3), dtype=np.uint8)
@@ -318,8 +260,6 @@ def _render_process_entry(
                 stop_event.set()
                 break
 
-            current_frame_size[0] = int(frame.shape[1])
-            current_frame_size[1] = int(frame.shape[0])
             cv2.imshow(window_name, frame)
             cv2.waitKey(1)
         except queue.Empty:
@@ -358,7 +298,6 @@ class ScreenRenderer:
         self._closed = True
         self._window_name = settings.SCREEN_RENDER_WINDOW_NAME
         self._queue: Any = None
-        self._mouse_event_queue: Any = None
         self._stop_event: Any = None
         self._process: Any = None
         self._win_geometry: Any = None
@@ -411,11 +350,6 @@ class ScreenRenderer:
         """(width, height) of the video frames being rendered."""
         return self._source_size
 
-    @property
-    def mouse_event_queue(self) -> Any:
-        """Queue of mouse events captured from the OpenCV window."""
-        return self._mouse_event_queue
-
     def start(self) -> None:
         """Start the renderer process and display the window immediately."""
         if not self._closed:
@@ -425,7 +359,6 @@ class ScreenRenderer:
         apply_multiprocessing_fix()
         ctx = mp.get_context("spawn")
         self._queue = ctx.Queue(maxsize=30)
-        self._mouse_event_queue = ctx.Queue(maxsize=100)
         self._stop_event = ctx.Event()
         self._win_geometry = ctx.Array("i", [0, 0, 960, 540])
         self._is_focused = ctx.Value("b", 0)
@@ -438,7 +371,6 @@ class ScreenRenderer:
                 self._window_name,
                 self._win_geometry,
                 self._is_focused,
-                self._mouse_event_queue,
             ),
             name="ScreenRendererProcess",
             daemon=True,
@@ -495,13 +427,6 @@ class ScreenRenderer:
             except Exception:
                 pass
             self._queue = None
-
-        if self._mouse_event_queue is not None:
-            try:
-                self._mouse_event_queue.close()
-            except Exception:
-                pass
-            self._mouse_event_queue = None
 
         self._stop_event = None
         self._win_geometry = None

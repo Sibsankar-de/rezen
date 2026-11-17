@@ -188,7 +188,6 @@ class PipeWireScreenCapture:
         self._last_frame: np.ndarray | None = None
         self._reader_error: str | None = None
         self._closed = False
-        self._remote_pointer: tuple[int, int, bool] | None = None
 
         try:
             self._mouse_controller: MouseController | None = MouseController()
@@ -421,38 +420,21 @@ class PipeWireScreenCapture:
 
         raise ScreenCaptureError("No frames received from the screen-share stream.")
 
-    def set_remote_pointer(self, x: int, y: int, clicked: bool = False) -> None:
-        """Update remote pointer position to burn onto frames."""
-        self._remote_pointer = (int(x), int(y), bool(clicked))
-
     def _apply_cursor(self, frame: np.ndarray) -> np.ndarray:
         mouse_ctrl = getattr(self, "_mouse_controller", None)
-        remote_ptr = getattr(self, "_remote_pointer", None)
-        if mouse_ctrl is None and remote_ptr is None:
+        if mouse_ctrl is None:
             return frame
         try:
             if not frame.flags.writeable:
                 frame = frame.copy()
-            if mouse_ctrl is not None:
-                pos = mouse_ctrl.position
-                if pos is not None:
-                    _burn_cursor_to_frame(
-                        frame,
-                        round(pos[0]),
-                        round(pos[1]),
-                        self._source_width,
-                        self._source_height,
-                    )
-            if remote_ptr is not None:
-                rx, ry, clicked = remote_ptr
-                fill = (255, 255, 255, 255) if clicked else (118, 230, 0, 255)
+            pos = mouse_ctrl.position
+            if pos is not None:
                 _burn_cursor_to_frame(
                     frame,
-                    round(rx),
-                    round(ry),
+                    round(pos[0]),
+                    round(pos[1]),
                     self._source_width,
                     self._source_height,
-                    fill_color=fill,
                 )
         except (OSError, RuntimeError):
             pass

@@ -76,11 +76,6 @@ class Streamer:
         except Exception:
             return (self.capture.width, self.capture.height)
 
-    def set_remote_pointer(self, x: int, y: int, clicked: bool = False) -> None:
-        """Forward remote pointer position to the capture backend for frame burn-in."""
-        if self._capture is not None and hasattr(self._capture, "set_remote_pointer"):
-            self._capture.set_remote_pointer(x, y, clicked)
-
     @property
     def encoder(self) -> H264Encoder:
         if self._encoder is None:
