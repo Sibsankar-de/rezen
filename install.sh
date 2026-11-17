@@ -31,11 +31,11 @@ command_exists() { command -v "$1" &>/dev/null; }
 
 print_banner() {
   echo -e "${BOLD}"
-  echo "  ____                      "
-  echo " |  _ \ ___ _______ _ __   "
-  echo " | |_) / _ \_  / _ \ '_ \\  "
-  echo " |  _ <  __// /  __/ | | | "
-  echo " |_| \_\___/___\___|_| |_| "
+  echo "  ____                              "
+  echo " |  _ \    ___   ____   ___   _ __  "
+  echo " | |_) |  / _ \ |_  /  / _ \ | '_ \ "
+  echo " |  _ <  |  __/  / /  |  __/ | | | |"
+  echo " |_| \_\  \___| /___|  \___| |_| |_|"
   echo -e "${RESET}"
   echo -e "  ${CYAN}Remote Device & Screen Control CLI${RESET}"
   echo

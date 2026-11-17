@@ -1,6 +1,6 @@
 # Rezen
 
-Rezen is an open-source tool for remote device and screen control over a local network. It lets you view and control another Linux machine from your own, with no accounts, no cloud, and no relay servers involved. Both devices just need to be on the same LAN.
+Rezen is an open-source, cross-platform tool for remote device and screen control over a local network. It lets you view and control machines across different operating systems (such as Linux and Windows) from your own device, with no accounts, no cloud, and no relay servers involved. Both devices just need to be on the same LAN.
 
 It handles LAN device discovery automatically, streams the host screen using H.264 over TCP, and forwards keyboard and mouse input back to the host. It ships with a terminal UI as well as headless CLI modes for running on servers or scripts.
 
@@ -22,6 +22,16 @@ After installation, open a new terminal or run `source ~/.bashrc` to pick up the
 > REZEN_INSTALL_DIR=/opt/rezen REZEN_BIN_DIR=/usr/local/bin \
 >   curl -fsSL https://raw.githubusercontent.com/Sibsankar-de/rezen/main/install.sh | bash
 > ```
+
+**Windows**
+
+Run in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/Sibsankar-de/rezen/main/install.ps1 | iex
+```
+
+After installation, open a new terminal to pick up the `rezen` command.
 
 ---
 
