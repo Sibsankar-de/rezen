@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 from input_control.keyboard_capture import KeyboardCapture
 from input_control.mouse_capture import MouseCapture
 from input_control.window_context import WindowContext
-from models.input import InputObject
+from models.input import InputObject, InputType
 from settings import settings
 from utils.logger import get_logger
 

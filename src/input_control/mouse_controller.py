@@ -33,6 +33,7 @@ class MouseController:
         self._virtual_mode: bool = False
         self._remote_target_x: int | None = None
         self._remote_target_y: int | None = None
+        self._saved_physical_pos: tuple[int, int] | None = None
         max_w, max_h = self._get_screen_bounds()
         self._screen_max_x = max(1, max_w - 1)
         self._screen_max_y = max(1, max_h - 1)
@@ -56,6 +57,10 @@ class MouseController:
 
     def set_virtual_mode(self, enabled: bool) -> None:
         """Toggle virtual pointer mode where move_abs does not directly warp system cursor."""
+        if not enabled and self._saved_physical_pos is not None:
+            orig_x, orig_y = self._saved_physical_pos
+            self._saved_physical_pos = None
+            self._warp_to(orig_x, orig_y)
         self._virtual_mode = enabled
 
     def apply(self, input_object: InputObject) -> None:
@@ -65,7 +70,25 @@ class MouseController:
 
     def close(self) -> None:
         """Release virtual device resources."""
+        if self._saved_physical_pos is not None:
+            try:
+                orig_x, orig_y = self._saved_physical_pos
+                self._saved_physical_pos = None
+                self._warp_to(orig_x, orig_y)
+            except Exception:
+                pass
         self._close_uinput()
+
+    def _get_physical_position(self) -> tuple[int, int] | None:
+        """Read the current physical mouse position on host."""
+        if self._mouse_controller is not None:
+            try:
+                pos = self._mouse_controller.position
+                if pos and len(pos) == 2:
+                    return (int(pos[0]), int(pos[1]))
+            except Exception:
+                pass
+        return None
 
     def _log_environment(self) -> str:
         session_type = os.environ.get("XDG_SESSION_TYPE", "unknown")
@@ -203,6 +226,13 @@ class MouseController:
                 btn_name = parts[0]
                 state = parts[1] if len(parts) > 1 else "0"
                 pressed = state.strip() == "1"
+                if len(parts) >= 3 and "," in parts[2]:
+                    try:
+                        cx, cy = _parse_int_pair(parts[2])
+                        self._remote_target_x = cx
+                        self._remote_target_y = cy
+                    except Exception:
+                        pass
                 self._do_click(btn_name, pressed)
             elif kind == "scroll":
                 dx, dy = _parse_int_pair(rest)
@@ -232,14 +262,19 @@ class MouseController:
         self._remote_target_x = x
         self._remote_target_y = y
         if self._virtual_mode:
+            if self._saved_physical_pos is not None:
+                # Dragging in progress: warp cursor so host OS processes drag motion
+                self._warp_to(x, y)
             return
 
+        self._warp_to(x, y)
+
+    def _warp_to(self, x: int, y: int) -> None:
         if self._uinput is not None and ecodes is not None:
             has_abs = getattr(self, "_has_abs", False)
             if not has_abs:
                 caps = getattr(self._uinput, "capabilities", dict)()
                 has_abs = ecodes.EV_ABS in caps
-
             if has_abs:
                 clamped_x = max(0, min(self._screen_max_x, x))
                 clamped_y = max(0, min(self._screen_max_y, y))
@@ -264,26 +299,6 @@ class MouseController:
             self._last_y = y
             self._last_time = now
             return
-
-        if self._mouse_controller is not None:
-            try:
-                self._mouse_controller.position = (x, y)
-            except Exception:
-                pass
-
-    def _warp_to(self, x: int, y: int) -> None:
-        if self._uinput is not None and ecodes is not None:
-            has_abs = getattr(self, "_has_abs", False)
-            if not has_abs:
-                caps = getattr(self._uinput, "capabilities", dict)()
-                has_abs = ecodes.EV_ABS in caps
-            if has_abs:
-                clamped_x = max(0, min(self._screen_max_x, x))
-                clamped_y = max(0, min(self._screen_max_y, y))
-                self._uinput.write(ecodes.EV_ABS, ecodes.ABS_X, clamped_x)
-                self._uinput.write(ecodes.EV_ABS, ecodes.ABS_Y, clamped_y)
-                self._uinput.syn()
-                return
         if self._mouse_controller is not None:
             try:
                 self._mouse_controller.position = (x, y)
@@ -295,14 +310,37 @@ class MouseController:
             f"[CONTROLLER] Mouse {'press' if pressed else 'release'} {btn_name!r} via {self._backend}"
         )
         if self._virtual_mode:
+            target_x = self._remote_target_x
+            target_y = self._remote_target_y
+            if target_x is None or target_y is None:
+                return
+
+            if pressed:
+                # Button DOWN: save physical host position and warp to remote target
+                if self._saved_physical_pos is None:
+                    self._saved_physical_pos = self._get_physical_position()
+                self._warp_to(target_x, target_y)
+                self._inject_click(btn_name, True)
+            else:
+                # Button UP: release at target, then restore physical cursor
+                self._warp_to(target_x, target_y)
+                self._inject_click(btn_name, False)
+                if self._saved_physical_pos is not None:
+                    orig_x, orig_y = self._saved_physical_pos
+                    self._saved_physical_pos = None
+                    self._warp_to(orig_x, orig_y)
             return
 
+        self._inject_click(btn_name, pressed)
+
+    def _inject_click(self, btn_name: str, pressed: bool) -> None:
         if self._uinput is not None and ecodes is not None:
             code = _BTN_NAME_TO_EVDEV.get(btn_name)
             if code is not None:
                 self._uinput.write(ecodes.EV_KEY, code, 1 if pressed else 0)
                 self._uinput.syn()
-        elif self._mouse_controller is not None:
+                return
+        if self._mouse_controller is not None:
             button = _BTN_NAME_TO_PYNPUT.get(btn_name)
             if button is not None:
                 try:
@@ -316,15 +354,27 @@ class MouseController:
     def _do_scroll(self, dx: int, dy: int) -> None:
         logger.debug(f"[CONTROLLER] Mouse scroll ({dx}, {dy}) via {self._backend}")
         if self._virtual_mode:
+            target_x = self._remote_target_x
+            target_y = self._remote_target_y
+            if target_x is not None and target_y is not None:
+                orig_pos = self._get_physical_position()
+                self._warp_to(target_x, target_y)
+                self._inject_scroll(dx, dy)
+                if orig_pos is not None:
+                    self._warp_to(orig_pos[0], orig_pos[1])
             return
 
+        self._inject_scroll(dx, dy)
+
+    def _inject_scroll(self, dx: int, dy: int) -> None:
         if self._uinput is not None and ecodes is not None:
             if dy != 0:
                 self._uinput.write(ecodes.EV_REL, ecodes.REL_WHEEL, dy)
             if dx != 0:
                 self._uinput.write(ecodes.EV_REL, ecodes.REL_HWHEEL, dx)
             self._uinput.syn()
-        elif self._mouse_controller is not None:
+            return
+        if self._mouse_controller is not None:
             try:
                 self._mouse_controller.scroll(dx, dy)
             except Exception:

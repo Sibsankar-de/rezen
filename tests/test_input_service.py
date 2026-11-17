@@ -766,34 +766,54 @@ def test_mouse_controller_virtual_mode():
     mc._uinput = None
     mc._backend = "pynput"
     mock_pynput_ctrl = MagicMock()
+    mock_pynput_ctrl.position = (100, 100)
     mc._mouse_controller = mock_pynput_ctrl
     mc.set_virtual_mode(True)
 
-    # move_abs in virtual mode should NOT move pynput position immediately
+    # move_abs in virtual mode should NOT move physical pointer position
     mc.apply(InputObject(type=InputType.MOUSE, data={"move_abs:450,250"}))
-    assert mock_pynput_ctrl.position != (450, 250)
+    assert mock_pynput_ctrl.position == (100, 100)
     assert mc._remote_target_x == 450
     assert mc._remote_target_y == 250
 
-    # move_abs with normalized payload
+    # move_abs with normalized payload updates target
     mc.apply(InputObject(type=InputType.MOUSE, data={"move_abs:500,300:0.3,0.3"}))
+    assert mock_pynput_ctrl.position == (100, 100)
     assert mc._remote_target_x == 500
     assert mc._remote_target_y == 300
 
-    # click in virtual mode should NOT warp or trigger host mouse click
+    # click press in virtual mode warps to target and calls press
     mc.apply(InputObject(type=InputType.MOUSE, data={"click:left:1"}))
-    assert mock_pynput_ctrl.position != (450, 250)
-    mock_pynput_ctrl.press.assert_not_called()
+    assert mock_pynput_ctrl.position == (500, 300)
+    mock_pynput_ctrl.press.assert_called_once_with(Button.left)
 
-    # click with normalized payload
-    mc.apply(InputObject(type=InputType.MOUSE, data={"click:left:1:500,300:0.3,0.3"}))
-    mock_pynput_ctrl.press.assert_not_called()
+    # click release in virtual mode releases and restores host physical position to (100, 100)
+    mc.apply(InputObject(type=InputType.MOUSE, data={"click:left:0"}))
+    mock_pynput_ctrl.release.assert_called_once_with(Button.left)
+    assert mock_pynput_ctrl.position == (100, 100)
 
-    # scroll and rel move in virtual mode should NOT affect host mouse
+    # click with coordinates in payload
+    mock_pynput_ctrl.press.reset_mock()
+    mock_pynput_ctrl.release.reset_mock()
+    mc.apply(InputObject(type=InputType.MOUSE, data={"click:right:1:600,400:0.4,0.4"}))
+    assert mc._remote_target_x == 600
+    assert mc._remote_target_y == 400
+    assert mock_pynput_ctrl.position == (600, 400)
+    mock_pynput_ctrl.press.assert_called_once_with(Button.right)
+
+    mc.apply(InputObject(type=InputType.MOUSE, data={"click:right:0:600,400:0.4,0.4"}))
+    mock_pynput_ctrl.release.assert_called_once_with(Button.right)
+    assert mock_pynput_ctrl.position == (100, 100)
+
+    # scroll in virtual mode executes at target and restores host physical position
     mc.apply(InputObject(type=InputType.MOUSE, data={"scroll:0,1"}))
-    mock_pynput_ctrl.scroll.assert_not_called()
+    mock_pynput_ctrl.scroll.assert_called_once_with(0, 1)
+    assert mock_pynput_ctrl.position == (100, 100)
+
+    # rel move in virtual mode does not affect host pointer
     mc.apply(InputObject(type=InputType.MOUSE, data={"move:10,20"}))
     mock_pynput_ctrl.move.assert_not_called()
+    assert mock_pynput_ctrl.position == (100, 100)
 
     mc.close()
 
@@ -824,6 +844,102 @@ async def test_input_receiver_overlay_forwarding():
 
     await receiver.stop()
     mock_overlay.stop.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_mouse_capture_direct_window_events():
+    import asyncio
+    import queue
+    import cv2
+    from unittest.mock import MagicMock
+    from input_control.mouse_capture import MouseCapture
+
+    class MockWindowRenderer:
+        def __init__(self):
+            self.is_focused = True
+            self.window_geometry = (100, 100, 960, 540)
+            self.source_size = (1920, 1080)
+            self._queue = queue.Queue()
+
+        @property
+        def mouse_event_queue(self):
+            return self._queue
+
+        def get_mouse_event(self, block=False, timeout=None):
+            try:
+                return self._queue.get(timeout=timeout if block else None)
+            except Exception:
+                return None
+
+    renderer = MockWindowRenderer()
+    mc = MouseCapture()
+    captured = []
+
+    def mock_enqueue(event: InputObject):
+        captured.append(event)
+
+    await mc.start(mock_enqueue, renderer=renderer)
+    assert mc._window_worker is not None
+
+    # Simulate direct OpenCV move event at image pixel (640, 360) -> nx=0.5, ny=0.5
+    # Scaled to 1920x1080: host_x = 960, host_y = 540
+    renderer._queue.put((cv2.EVENT_MOUSEMOVE, 640, 360, 0.5, 0.5, 0))
+    await asyncio.sleep(0.08)
+    assert len(captured) >= 1
+    assert captured[-1].data == {"move_abs:960,540:0.500000,0.500000"}
+
+    # Simulate click down and up
+    renderer._queue.put((cv2.EVENT_LBUTTONDOWN, 640, 360, 0.5, 0.5, 0))
+    await asyncio.sleep(0.08)
+    assert captured[-1].data == {"click:left:1:960,540:0.500000,0.500000"}
+
+    renderer._queue.put((cv2.EVENT_LBUTTONUP, 640, 360, 0.5, 0.5, 0))
+    await asyncio.sleep(0.08)
+    assert captured[-1].data == {"click:left:0:960,540:0.500000,0.500000"}
+
+    await mc.stop()
+    assert mc._window_worker is None
+
+
+def test_mouse_controller_virtual_mode_drag_and_restore():
+    from unittest.mock import MagicMock
+    from pynput.mouse import Button
+    from input_control.mouse_controller import MouseController
+
+    mc = MouseController()
+    mc._uinput = None
+    mc._backend = "pynput"
+    mock_pynput_ctrl = MagicMock()
+    mock_pynput_ctrl.position = (200, 200)
+    mc._mouse_controller = mock_pynput_ctrl
+    mc.set_virtual_mode(True)
+
+    # 1. Target move: does NOT warp physical cursor (remains 200, 200)
+    mc.apply(InputObject(type=InputType.MOUSE, data={"move_abs:400,300"}))
+    assert mock_pynput_ctrl.position == (200, 200)
+
+    # 2. Mouse down at target: saves (200, 200), warps to (400, 300), presses button
+    mc.apply(InputObject(type=InputType.MOUSE, data={"click:left:1"}))
+    assert mock_pynput_ctrl.position == (400, 300)
+    mock_pynput_ctrl.press.assert_called_once_with(Button.left)
+
+    # 3. Drag motion while button held down: warps cursor along drag path
+    mc.apply(InputObject(type=InputType.MOUSE, data={"move_abs:450,350"}))
+    assert mock_pynput_ctrl.position == (450, 350)
+    mc.apply(InputObject(type=InputType.MOUSE, data={"move_abs:500,400"}))
+    assert mock_pynput_ctrl.position == (500, 400)
+
+    # 4. Mouse up: releases button at (500, 400), then immediately restores physical cursor to (200, 200)
+    mc.apply(InputObject(type=InputType.MOUSE, data={"click:left:0"}))
+    mock_pynput_ctrl.release.assert_called_once_with(Button.left)
+    assert mock_pynput_ctrl.position == (200, 200)
+
+    # 5. Subsequent move without button held does NOT warp physical cursor
+    mc.apply(InputObject(type=InputType.MOUSE, data={"move_abs:600,500"}))
+    assert mock_pynput_ctrl.position == (200, 200)
+
+    mc.close()
+
 
 
 

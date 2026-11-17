@@ -2,8 +2,12 @@ import asyncio
 import glob
 import os
 import sys
+import threading
+import time
 from collections.abc import Callable
 from typing import Any
+
+import cv2
 
 try:
     import evdev
@@ -33,6 +37,8 @@ class MouseCapture:
         self._evdev_tasks: list[asyncio.Task] = []
         self._backend: str | None = None
         self._renderer: WindowContext | None = None
+        self._window_worker: threading.Thread | None = None
+        self._stop_window_worker: threading.Event | None = None
 
     async def start(
         self,
@@ -47,6 +53,14 @@ class MouseCapture:
         self._loop = asyncio.get_running_loop()
         self._enqueue = enqueue
         self._renderer = renderer
+
+        # Hook direct OpenCV window mouse callback queue if available
+        if (
+            self._renderer is not None
+            and getattr(self._renderer, "mouse_event_queue", None) is not None
+        ):
+            self._start_window_listener()
+
         session_type = self._log_environment()
 
         try:
@@ -66,6 +80,16 @@ class MouseCapture:
 
     async def stop(self) -> None:
         """Stop mouse capture."""
+        if self._stop_window_worker is not None:
+            self._stop_window_worker.set()
+        if self._window_worker is not None:
+            try:
+                await asyncio.to_thread(self._window_worker.join, 0.5)
+            except Exception:
+                pass
+            self._window_worker = None
+        self._stop_window_worker = None
+
         if self._evdev_tasks:
             await self._stop_evdev()
 
@@ -74,7 +98,77 @@ class MouseCapture:
 
     def _is_running(self) -> bool:
         pynput_active = self._listener is not None and self._listener.is_alive()
-        return pynput_active or bool(self._evdev_tasks)
+        window_active = self._window_worker is not None and self._window_worker.is_alive()
+        return pynput_active or window_active or bool(self._evdev_tasks)
+
+    def _start_window_listener(self) -> None:
+        """Start worker thread to read events directly from the ScreenRenderer OpenCV window."""
+        self._stop_window_worker = threading.Event()
+        self._window_worker = threading.Thread(
+            target=self._window_mouse_worker,
+            daemon=True,
+            name="WindowMouseWorker",
+        )
+        self._window_worker.start()
+        logger.info("[CAPTURE] Direct window mouse event listener started.")
+
+    def _window_mouse_worker(self) -> None:
+        """Poll events from renderer window and dispatch them with normalized coordinates."""
+        while self._stop_window_worker is not None and not self._stop_window_worker.is_set():
+            if self._renderer is None or getattr(self._renderer, "isClosed", False):
+                time.sleep(0.02)
+                continue
+            try:
+                ev = None
+                if hasattr(self._renderer, "get_mouse_event"):
+                    ev = self._renderer.get_mouse_event(block=True, timeout=0.05)
+                elif hasattr(self._renderer, "mouse_event_queue"):
+                    q = self._renderer.mouse_event_queue
+                    if q is not None:
+                        ev = q.get(timeout=0.05)
+                if ev is not None:
+                    self._on_window_mouse(*ev)
+            except Exception:
+                pass
+
+    def _on_window_mouse(
+        self, event: int, x: int, y: int, nx: float, ny: float, flags: int
+    ) -> None:
+        if self._loop is None or self._loop.is_closed() or self._enqueue is None:
+            return
+
+        if self._renderer is not None:
+            if hasattr(self._renderer, "source_size"):
+                host_w, host_h = self._renderer.source_size
+            else:
+                host_w = settings.SCREEN_CAPTURE_MAX_WIDTH
+                host_h = settings.SCREEN_CAPTURE_MAX_HEIGHT
+        else:
+            host_w = settings.SCREEN_CAPTURE_MAX_WIDTH
+            host_h = settings.SCREEN_CAPTURE_MAX_HEIGHT
+
+        host_x = max(0, min(host_w - 1, round(nx * host_w)))
+        host_y = max(0, min(host_h - 1, round(ny * host_h)))
+
+        encoded: str | None = None
+        if event == cv2.EVENT_MOUSEMOVE:
+            encoded = f"move_abs:{host_x},{host_y}:{nx:.6f},{ny:.6f}"
+        elif event in (cv2.EVENT_LBUTTONDOWN, getattr(cv2, "EVENT_LBUTTONDBLCLK", 7)):
+            encoded = f"click:left:1:{host_x},{host_y}:{nx:.6f},{ny:.6f}"
+        elif event == cv2.EVENT_LBUTTONUP:
+            encoded = f"click:left:0:{host_x},{host_y}:{nx:.6f},{ny:.6f}"
+        elif event in (cv2.EVENT_RBUTTONDOWN, getattr(cv2, "EVENT_RBUTTONDBLCLK", 8)):
+            encoded = f"click:right:1:{host_x},{host_y}:{nx:.6f},{ny:.6f}"
+        elif event == cv2.EVENT_RBUTTONUP:
+            encoded = f"click:right:0:{host_x},{host_y}:{nx:.6f},{ny:.6f}"
+        elif event in (cv2.EVENT_MBUTTONDOWN, getattr(cv2, "EVENT_MBUTTONDBLCLK", 9)):
+            encoded = f"click:middle:1:{host_x},{host_y}:{nx:.6f},{ny:.6f}"
+        elif event == cv2.EVENT_MBUTTONUP:
+            encoded = f"click:middle:0:{host_x},{host_y}:{nx:.6f},{ny:.6f}"
+
+        if encoded is not None:
+            obj = InputObject(type=InputType.MOUSE, data={encoded})
+            self._loop.call_soon_threadsafe(self._enqueue, obj)
 
     def _log_environment(self) -> str:
         session_type = os.environ.get("XDG_SESSION_TYPE", "unknown")
@@ -233,9 +327,13 @@ class MouseCapture:
         )
 
     def _on_pynput_move(self, x: int, y: int) -> None:
+        if self._window_worker is not None:
+            return
         self._dispatch(f"move_abs:{x},{y}")
 
     def _on_pynput_click(self, x: int, y: int, button: Button, pressed: bool) -> None:
+        if self._window_worker is not None:
+            return
         if self._renderer is not None:
             if not self._renderer.is_focused:
                 return
@@ -309,11 +407,14 @@ class MouseCapture:
         kind, _, rest = encoded.partition(":")
 
         if kind == "move_abs":
-            screen_x, screen_y = _parse_int_pair(rest)
+            coords = rest.split(":")[0]
+            screen_x, screen_y = _parse_int_pair(coords)
             rel_x = screen_x - win_x
             rel_y = screen_y - win_y
             if rel_x < 0 or rel_x >= win_w or rel_y < 0 or rel_y >= win_h:
                 return None
+            nx = max(0.0, min(1.0, rel_x / float(win_w)))
+            ny = max(0.0, min(1.0, rel_y / float(win_h)))
             scale_x = host_w / win_w
             scale_y = host_h / win_h
             host_x = max(0, min(host_w - 1, round(rel_x * scale_x)))

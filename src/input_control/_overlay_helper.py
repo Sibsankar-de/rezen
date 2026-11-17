@@ -109,7 +109,7 @@ def main():
         move_scheduled[0] = False
         tx, ty = target_pos[0], target_pos[1]
         if tx is not None and ty is not None:
-            win.move(tx, ty)
+            win.move(tx - 1, ty - 1)
         return False
 
     def stdin_listener():
