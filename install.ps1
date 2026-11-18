@@ -192,8 +192,11 @@ function Install-Launchers($installDir, $binDir) {
     }
 
     # Windows Batch Launcher (.cmd) - executes cleanly in Command Prompt, PowerShell, Git Bash, and Windows Terminal
+    # We invoke python src\main.py instead of the entrypoint shim (rezen.exe) because Windows Smart App Control
+    # and Application Control policies block unsigned .exe shims generated in user directories.
+    $mainScript = Join-Path $installDir "src\main.py"
     $cmdPath = Join-Path $binDir "rezen.cmd"
-    $cmdContent = "@echo off`r`nuv run --project `"$installDir`" rezen %*`r`nexit /b %ERRORLEVEL%`r`n"
+    $cmdContent = "@echo off`r`nuv run --project `"$installDir`" python `"$mainScript`" %*`r`nexit /b %ERRORLEVEL%`r`n"
     [System.IO.File]::WriteAllText($cmdPath, $cmdContent, [System.Text.Encoding]::ASCII)
 
     Write-Success "Launcher installed at: $binDir\rezen.cmd"
@@ -224,7 +227,8 @@ function Configure-Path($binDir) {
 # ── 10. Verify ────────────────────────────────────────────────────────────────
 function Verify-Install($installDir) {
     try {
-        & uv run --project "$installDir" rezen --help > $null 2>&1
+        $mainScript = Join-Path $installDir "src\main.py"
+        & uv run --project "$installDir" python "$mainScript" --help > $null 2>&1
         Write-Success "Verification passed - rezen is ready!"
     } catch {
         Write-Warn "Verification check could not run automatically. Try typing 'rezen' in a new terminal."
