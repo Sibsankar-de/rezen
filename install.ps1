@@ -36,16 +36,13 @@ function Check-OS {
 # ── 2. Configure execution policy ─────────────────────────────────────────────
 function Configure-ExecutionPolicy {
     $allowed = @("Unrestricted", "RemoteSigned", "Bypass")
-    $current = (Get-ExecutionPolicy).ToString()
-    if ($current -notin $allowed) {
-        Write-Info "Adjusting PowerShell ExecutionPolicy for CurrentUser to RemoteSigned..."
-        try {
+    try {
+        $userPolicy = (Get-ExecutionPolicy -Scope CurrentUser).ToString()
+        if ($userPolicy -notin $allowed) {
+            Write-Info "Adjusting PowerShell ExecutionPolicy for CurrentUser to RemoteSigned..."
             Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force -ErrorAction SilentlyContinue
-        } catch {}
-        try {
-            Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force -ErrorAction SilentlyContinue
-        } catch {}
-    }
+        }
+    } catch {}
 }
 
 # ── 3. Git check ──────────────────────────────────────────────────────────────
@@ -188,17 +185,18 @@ function Install-Launchers($installDir, $binDir) {
         New-Item -ItemType Directory -Path $binDir -Force | Out-Null
     }
 
-    # 1. Windows Command Prompt Batch Script (.cmd)
+    # Remove rezen.ps1 if present so PowerShell falls back to rezen.cmd (bypasses execution policy restrictions)
+    $ps1Path = Join-Path $binDir "rezen.ps1"
+    if (Test-Path $ps1Path) {
+        Remove-Item -Path $ps1Path -Force -ErrorAction SilentlyContinue
+    }
+
+    # Windows Batch Launcher (.cmd) - executes cleanly in Command Prompt, PowerShell, Git Bash, and Windows Terminal
     $cmdPath = Join-Path $binDir "rezen.cmd"
-    $cmdContent = "@echo off`r`nuv run --project `"$installDir`" rezen %*`r`n"
+    $cmdContent = "@echo off`r`nuv run --project `"$installDir`" rezen %*`r`nexit /b %ERRORLEVEL%`r`n"
     [System.IO.File]::WriteAllText($cmdPath, $cmdContent, [System.Text.Encoding]::ASCII)
 
-    # 2. PowerShell Script (.ps1)
-    $ps1Path = Join-Path $binDir "rezen.ps1"
-    $ps1Content = "& uv run --project `"$installDir`" rezen @args`r`n"
-    [System.IO.File]::WriteAllText($ps1Path, $ps1Content, [System.Text.Encoding]::UTF8)
-
-    Write-Success "Launchers installed at: $binDir\rezen"
+    Write-Success "Launcher installed at: $binDir\rezen.cmd"
 }
 
 # ── 9. Configure PATH ─────────────────────────────────────────────────────────
