@@ -99,3 +99,14 @@ async def test_run_cli_broadcast_interrupt():
         mock_bc_service.start_private_broadcast.assert_awaited_once()
         mock_bc_service.broadcast.assert_awaited_once()
         mock_bc_service.stop_private_broadcast.assert_awaited_once()
+
+
+def test_parser_version_flag(capsys):
+    from settings import settings
+
+    parser = build_parser()
+    with pytest.raises(SystemExit) as exc_info:
+        parser.parse_args(["--version"])
+    assert exc_info.value.code == 0
+    captured = capsys.readouterr()
+    assert settings.VERSION in captured.out

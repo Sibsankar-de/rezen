@@ -28,7 +28,7 @@ After installation, open a new terminal or run `source ~/.bashrc` to pick up the
 Run in PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/Sibsankar-de/rezen/main/install.ps1 | iex
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/Sibsankar-de/rezen/main/install.ps1 | iex"
 ```
 
 After installation, open a new terminal to pick up the `rezen` command.
@@ -63,6 +63,7 @@ Both run continuously until you press `Ctrl+C`.
 
 | Flag                | Short | Description                                           |
 | ------------------- | ----- | ----------------------------------------------------- |
+| `--version`         | `-v`  | Show application version and exit                     |
 | `--start-broadcast` | `-b`  | Run as a headless broadcaster                         |
 | `--start-discover`  | `-d`  | Run as a headless device scanner                      |
 | `--interval`        | `-i`  | Heartbeat / scan interval in seconds (default: `2.0`) |

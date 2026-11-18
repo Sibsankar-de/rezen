@@ -1,10 +1,8 @@
-﻿# =============================================================================
-# Rezen Installer for Windows — Remote Device & Screen Control CLI
-# Usage:
-#   irm https://raw.githubusercontent.com/Sibsankar-de/rezen/main/install.ps1 | iex
-# =============================================================================
-
 $ErrorActionPreference = "Stop"
+
+# Rezen Installer for Windows - Remote Device & Screen Control CLI
+# Usage:
+#   powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/Sibsankar-de/rezen/main/install.ps1 | iex"
 
 function Write-Info($msg)    { Write-Host "[rezen] $msg" -ForegroundColor Cyan }
 function Write-Success($msg) { Write-Host "[rezen] $msg" -ForegroundColor Green }
@@ -35,7 +33,22 @@ function Check-OS {
     Write-Info "Platform: Windows [OK]"
 }
 
-# ── 2. Git check ──────────────────────────────────────────────────────────────
+# ── 2. Configure execution policy ─────────────────────────────────────────────
+function Configure-ExecutionPolicy {
+    $allowed = @("Unrestricted", "RemoteSigned", "Bypass")
+    $current = (Get-ExecutionPolicy).ToString()
+    if ($current -notin $allowed) {
+        Write-Info "Adjusting PowerShell ExecutionPolicy for CurrentUser to RemoteSigned..."
+        try {
+            Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force -ErrorAction SilentlyContinue
+        } catch {}
+        try {
+            Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force -ErrorAction SilentlyContinue
+        } catch {}
+    }
+}
+
+# ── 3. Git check ──────────────────────────────────────────────────────────────
 function Check-Git {
     if (-not (Test-CommandExists "git")) {
         Write-Warn "git not found."
@@ -57,7 +70,7 @@ function Check-Git {
     Write-Info "Git: $gitVer [OK]"
 }
 
-# ── 3. Python check ───────────────────────────────────────────────────────────
+# ── 4. Python check ───────────────────────────────────────────────────────────
 function Check-Python {
     $foundPython = $false
     foreach ($bin in @("python", "py", "python3")) {
@@ -90,15 +103,30 @@ function Check-Python {
     }
 }
 
-# ── 4. uv package manager check ───────────────────────────────────────────────
+# ── 5. uv package manager check ───────────────────────────────────────────────
 function Check-Uv {
     if (-not (Test-CommandExists "uv")) {
         Write-Info "uv not found. Installing uv (Python package manager)..."
+        
+        $installed = $false
+        # Method 1: Official Astral installer executed with Bypass execution policy
         try {
-            irm https://astral.sh/uv/install.ps1 | iex
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+            if ($LASTEXITCODE -eq 0) {
+                $installed = $true
+            }
         } catch {
-            Write-Err "Failed to download and run uv installer. Please install uv manually: https://docs.astral.sh/uv/"
-            exit 1
+            Write-Warn "Astral web installer encountered an issue: $_"
+        }
+
+        # Method 2: Fallback to winget if needed
+        if (-not $installed -and (Test-CommandExists "winget")) {
+            Write-Info "Attempting uv installation via winget..."
+            try {
+                winget install --id astral-sh.uv -e --source winget --accept-source-agreements --accept-package-agreements
+            } catch {
+                Write-Warn "winget installation for uv failed."
+            }
         }
 
         # Refresh PATH for current session
@@ -108,7 +136,7 @@ function Check-Uv {
         if (Test-Path $cargoBin) { $env:PATH = "$cargoBin;$env:PATH" }
 
         if (-not (Test-CommandExists "uv")) {
-            Write-Err "uv command still not accessible. Please install uv from https://docs.astral.sh/uv/ and rerun."
+            Write-Err "uv command still not accessible. Please install uv manually from https://docs.astral.sh/uv/ and rerun."
             exit 1
         }
     }
@@ -116,11 +144,19 @@ function Check-Uv {
     Write-Info "uv: $uvVer [OK]"
 }
 
-# ── 5. Fetch or update repo ───────────────────────────────────────────────────
+# ── 6. Fetch or update repo ───────────────────────────────────────────────────
+$global:IsUpdate = $false
+
 function Fetch-Rezen($installDir, $repoUrl) {
     if (Test-Path (Join-Path $installDir ".git")) {
-        Write-Info "Existing installation found at $installDir - updating..."
-        git -C "$installDir" pull --ff-only
+        $global:IsUpdate = $true
+        Write-Info "Existing installation found at $installDir - updating to latest version..."
+        try {
+            git -C "$installDir" fetch --depth 1 origin main
+            git -C "$installDir" reset --hard origin/main
+        } catch {
+            git -C "$installDir" pull --ff-only
+        }
     } else {
         Write-Info "Cloning Rezen into $installDir..."
         if (-not (Test-Path $installDir)) {
@@ -130,7 +166,7 @@ function Fetch-Rezen($installDir, $repoUrl) {
     }
 }
 
-# ── 6. Install dependencies ───────────────────────────────────────────────────
+# ── 7. Install dependencies ───────────────────────────────────────────────────
 function Install-Deps($installDir) {
     Write-Info "Installing Python dependencies (this may take a moment)..."
     Push-Location "$installDir"
@@ -146,7 +182,7 @@ function Install-Deps($installDir) {
     }
 }
 
-# ── 7. Install launchers ──────────────────────────────────────────────────────
+# ── 8. Install launchers ──────────────────────────────────────────────────────
 function Install-Launchers($installDir, $binDir) {
     if (-not (Test-Path $binDir)) {
         New-Item -ItemType Directory -Path $binDir -Force | Out-Null
@@ -165,12 +201,11 @@ function Install-Launchers($installDir, $binDir) {
     Write-Success "Launchers installed at: $binDir\rezen"
 }
 
-# ── 8. Configure PATH ─────────────────────────────────────────────────────────
+# ── 9. Configure PATH ─────────────────────────────────────────────────────────
 function Configure-Path($binDir) {
     $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
-    $paths = if ($userPath) { $userPath -split ';' } else { @() }
+    $paths = if ($userPath) { $userPath -split ";" } else { @() }
     
-    # Normalize paths for comparison
     $normalizedBin = (Resolve-Path $binDir -ErrorAction SilentlyContinue).Path
     $alreadyInPath = $false
     foreach ($p in $paths) {
@@ -188,7 +223,7 @@ function Configure-Path($binDir) {
     }
 }
 
-# ── 9. Verify ─────────────────────────────────────────────────────────────────
+# ── 10. Verify ────────────────────────────────────────────────────────────────
 function Verify-Install($installDir) {
     try {
         & uv run --project "$installDir" rezen --help > $null 2>&1
@@ -211,6 +246,7 @@ function Main {
     $BinDir = if ($env:REZEN_BIN_DIR) { $env:REZEN_BIN_DIR } else { Join-Path $env:USERPROFILE ".local\bin" }
 
     Check-OS
+    Configure-ExecutionPolicy
     Check-Git
     Check-Python
     Check-Uv
@@ -222,7 +258,11 @@ function Main {
 
     Write-Host ""
     Write-Success "==========================================="
-    Write-Success "  Rezen installed successfully!            "
+    if ($global:IsUpdate) {
+        Write-Success "  Rezen updated successfully!              "
+    } else {
+        Write-Success "  Rezen installed successfully!            "
+    }
     Write-Success "==========================================="
     Write-Host ""
     Write-Info "Run it with:  rezen"

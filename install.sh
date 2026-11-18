@@ -166,10 +166,13 @@ install_system_deps() {
 }
 
 # ── Clone or update repo ──────────────────────────────────────────────────────
+IS_UPDATE=0
+
 fetch_rezen() {
   if [[ -d "$INSTALL_DIR/.git" ]]; then
-    info "Existing installation found at $INSTALL_DIR — updating..."
-    git -C "$INSTALL_DIR" pull --ff-only
+    IS_UPDATE=1
+    info "Existing installation found at $INSTALL_DIR — updating to latest version..."
+    git -C "$INSTALL_DIR" fetch --depth 1 origin main 2>/dev/null && git -C "$INSTALL_DIR" reset --hard origin/main 2>/dev/null || git -C "$INSTALL_DIR" pull --ff-only
   else
     info "Cloning rezen into $INSTALL_DIR..."
     git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
@@ -278,9 +281,15 @@ main() {
   verify
 
   echo
-  success "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  success "  Rezen installed successfully! 🎉"
-  success "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  if [[ "$IS_UPDATE" -eq 1 ]]; then
+    success "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    success "  Rezen updated successfully! 🎉"
+    success "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  else
+    success "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    success "  Rezen installed successfully! 🎉"
+    success "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  fi
   echo
   info "Run it with:  ${BOLD}rezen${RESET}"
   info "If 'rezen' is not found, reload your shell:"

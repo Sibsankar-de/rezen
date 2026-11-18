@@ -1,11 +1,20 @@
 import argparse
 
+from settings import settings
+
 
 def build_parser() -> argparse.ArgumentParser:
     """Construct and configure the argument parser for Rezen CLI."""
     parser = argparse.ArgumentParser(
         prog="rezen",
         description="Rezen - Remote Device & Screen Control CLI",
+    )
+    parser.add_argument(
+        "--version",
+        "-v",
+        action="version",
+        version=f"%(prog)s {settings.VERSION}",
+        help="Show program's version number and exit",
     )
     parser.add_argument(
         "--start-broadcast",
