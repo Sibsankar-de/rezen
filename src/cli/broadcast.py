@@ -41,6 +41,7 @@ async def run_cli_broadcast(
             expand=False,
         )
     )
+    console.print("[green]●[/green] Presence broadcast is active. Listening for discover requests. Press [bold cyan]Ctrl+C[/bold cyan] to stop.\n")
     logger.info(
         f"Starting broadcast service on port {device.port} (heartbeat: {interval}s)..."
     )

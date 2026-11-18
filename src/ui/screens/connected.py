@@ -1,4 +1,5 @@
-from typing import Optional
+import inspect
+
 from textual.app import ComposeResult
 from textual.containers import Center, Horizontal, Middle, Vertical
 from textual.screen import Screen
@@ -6,13 +7,14 @@ from textual.timer import Timer
 from textual.widgets import Button, Label
 
 from container import container
-from models.device import Device
 from models.connection import Connection
+from models.device import Device
 from services.connection_service import ConnectionService
 from services.device_service import DeviceService
 from services.input_service import InputService
 from services.screen_cast_service import ScreenCastService
 from utils.logger import get_logger
+
 from ..layout import BaseLayout
 
 logger = get_logger(__name__)
@@ -25,10 +27,10 @@ class ConnectedScreen(Screen):
         self,
         device: Device,
         connection: Connection,
-        connection_service: Optional[ConnectionService] = None,
-        device_service: Optional[DeviceService] = None,
-        screen_cast_service: Optional[ScreenCastService] = None,
-        input_service: Optional[InputService] = None,
+        connection_service: ConnectionService | None = None,
+        device_service: DeviceService | None = None,
+        screen_cast_service: ScreenCastService | None = None,
+        input_service: InputService | None = None,
         is_streamer: bool = False,
         **kwargs,
     ):
@@ -51,7 +53,6 @@ class ConnectedScreen(Screen):
                     with Vertical(id="connected-card"):
                         with Horizontal(classes="card-nav"):
                             yield Label("Connected", classes="card-nav-title")
-                            yield Button("Disconnect", id="btn-disconnect", classes="btn-back-small")
                         yield Label(
                             f"Connected to {self._device.name} ({self._device.id})",
                             id="connected-subtitle",
@@ -69,6 +70,8 @@ class ConnectedScreen(Screen):
                             f"Active  ({role_text})  id: {self._connection.id}",
                             id="connected-status",
                         )
+                        with Center(id="connected-actions"):
+                            yield Button("Disconnect", id="btn-disconnect", variant="error")
 
     def on_mount(self) -> None:
         """Poll the streaming pipeline health while connected."""
@@ -96,11 +99,27 @@ class ConnectedScreen(Screen):
         self._stopped = True
         try:
             if self._is_streamer:
-                await self._screen_cast_service.stop_streaming()
-                await self._input_service.stop_receiver()
+                if hasattr(self._screen_cast_service, "stop_streaming"):
+                    res = self._screen_cast_service.stop_streaming()
+                    if inspect.isawaitable(res):
+                        await res
+                if hasattr(self._input_service, "stop_receiver"):
+                    res = self._input_service.stop_receiver()
+                    if inspect.isawaitable(res):
+                        await res
             else:
-                await self._screen_cast_service.stop_receiving()
-                await self._input_service.stop_streamer()
+                if hasattr(self._screen_cast_service, "stop_receiving"):
+                    res = self._screen_cast_service.stop_receiving()
+                    if inspect.isawaitable(res):
+                        await res
+                if hasattr(self._input_service, "stop_receiver"):
+                    res = self._input_service.stop_receiver()
+                    if inspect.isawaitable(res):
+                        await res
+                if hasattr(self._input_service, "stop_streamer"):
+                    res = self._input_service.stop_streamer()
+                    if inspect.isawaitable(res):
+                        await res
         except Exception as exc:
             logger.error(
                 f"Error stopping screen cast / input service: {exc}",

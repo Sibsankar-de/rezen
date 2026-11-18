@@ -171,11 +171,16 @@ IS_UPDATE=0
 fetch_rezen() {
   if [[ -d "$INSTALL_DIR/.git" ]]; then
     IS_UPDATE=1
-    info "Existing installation found at $INSTALL_DIR — updating to latest version..."
+    info "Existing installation found at $INSTALL_DIR - updating to latest version..."
     git -C "$INSTALL_DIR" fetch --depth 1 origin main 2>/dev/null && git -C "$INSTALL_DIR" reset --hard origin/main 2>/dev/null || git -C "$INSTALL_DIR" pull --ff-only
   else
     info "Cloning rezen into $INSTALL_DIR..."
     git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
+  fi
+
+  if [[ ! -f "$INSTALL_DIR/.env" && -f "$INSTALL_DIR/.env.example" ]]; then
+    cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env"
+    info "Created default .env configuration."
   fi
 }
 

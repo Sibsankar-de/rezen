@@ -115,14 +115,22 @@ class ConnectingScreen(Screen):
                         exc_info=True,
                     )
 
-                logger.info("Starting input streaming as viewer (viewer sends input to host)...")
+                logger.info("Starting input service for connection...")
                 try:
-                    await asyncio.wait_for(
-                        self._input_service.start_streamer(
-                            renderer=self._screen_cast_service.receiver.renderer
-                        ),
-                        timeout=5.0,
-                    )
+                    import inspect
+                    if hasattr(self._input_service, "start_streamer"):
+                        try:
+                            res = self._input_service.start_streamer(
+                                renderer=getattr(getattr(self._screen_cast_service, "receiver", None), "renderer", None)
+                            )
+                        except TypeError:
+                            res = self._input_service.start_streamer()
+                        if inspect.isawaitable(res):
+                            await asyncio.wait_for(res, timeout=5.0)
+                    if hasattr(self._input_service, "start_receiver"):
+                        res = self._input_service.start_receiver()
+                        if inspect.isawaitable(res):
+                            await asyncio.wait_for(res, timeout=5.0)
                 except Exception as exc:
                     logger.warning(
                         f"Input streamer startup delayed or error: {exc}",

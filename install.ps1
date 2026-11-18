@@ -161,6 +161,13 @@ function Fetch-Rezen($installDir, $repoUrl) {
         }
         git clone --depth 1 $repoUrl "$installDir"
     }
+
+    $envFile = Join-Path $installDir ".env"
+    $envExample = Join-Path $installDir ".env.example"
+    if ((-not (Test-Path $envFile)) -and (Test-Path $envExample)) {
+        Copy-Item -Path $envExample -Destination $envFile
+        Write-Info "Created default .env configuration."
+    }
 }
 
 # ── 7. Install dependencies ───────────────────────────────────────────────────

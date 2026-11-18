@@ -180,3 +180,27 @@ RequestListItem, DeviceListItem {
     margin-bottom: 1;
     text-wrap: wrap;
 }
+
+#connected-actions {
+    width: 100%;
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+#btn-disconnect {
+    background: $error;
+    color: white;
+    width: 32;
+    border: none;
+    text-style: bold;
+}
+
+#btn-disconnect:hover {
+    background: #c0392b;
+}
+
+#btn-disconnect:focus {
+    background: #e74c3c;
+    border: tall #ff7675;
+}
