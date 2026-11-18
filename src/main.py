@@ -10,13 +10,20 @@ if str(src_dir) not in sys.path:
 
 apply_multiprocessing_fix()
 from cli.main import cli
+from cli.parser import build_parser
 
-setup_logging()
 logger = get_logger(__name__)
+
+INFO_FLAGS = ["-v", "--version", "-h", "--help"]
 
 
 def main() -> None:
     """Primary application entry point which starts src/cli/main.py."""
+    if any(arg in sys.argv for arg in INFO_FLAGS):
+        parser = build_parser()
+        parser.parse_args()
+
+    setup_logging()
     logger.info("Starting rezen.")
 
     asyncio.run(cli())

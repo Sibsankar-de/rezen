@@ -2,6 +2,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    VERSION: str = "0.1.0"
+    version: str = "0.1.0"
     db_path: str = "rezen.db"
 
     model_config = SettingsConfigDict(
