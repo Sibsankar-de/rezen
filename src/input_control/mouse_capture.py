@@ -160,6 +160,13 @@ class MouseCapture:
                 if ecodes is None:
                     continue
 
+                # Gate on window focus — drop all events when the viewer window is
+                # not the active window (mirrors the pynput _dispatch guard).
+                if self._renderer is not None and not self._renderer.is_focused:
+                    rel_x = 0
+                    rel_y = 0
+                    continue
+
                 if event.type == ecodes.EV_REL:
                     if event.code == ecodes.REL_X:
                         rel_x += event.value

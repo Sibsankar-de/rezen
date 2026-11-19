@@ -174,17 +174,16 @@ class BroadcastScreen(Screen):
                     exc_info=True,
                 )
 
-            logger.info("Starting input receiving as broadcaster (host receives remote input)...")
+            logger.info("Starting input receiving as broadcaster (remote device injects input from host)...")
             try:
                 import inspect
                 if hasattr(self._input_service, "start_receiver"):
                     res = self._input_service.start_receiver()
                     if inspect.isawaitable(res):
                         await asyncio.wait_for(res, timeout=5.0)
-                if hasattr(self._input_service, "start_streamer"):
-                    res = self._input_service.start_streamer()
-                    if inspect.isawaitable(res):
-                        await asyncio.wait_for(res, timeout=5.0)
+                # NOTE: The broadcaster is the remote device — it only receives and injects
+                # input. It must NOT start the input streamer, which would capture the
+                # injected events and stream them back to the host, creating a feedback loop.
             except Exception as exc:
                 logger.warning(
                     f"Input receiver startup delayed or error: {exc}",

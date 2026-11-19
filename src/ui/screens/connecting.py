@@ -115,7 +115,7 @@ class ConnectingScreen(Screen):
                         exc_info=True,
                     )
 
-                logger.info("Starting input service for connection...")
+                logger.info("Starting input streamer for connection (host streams its input to remote)...")
                 try:
                     import inspect
                     if hasattr(self._input_service, "start_streamer"):
@@ -127,10 +127,9 @@ class ConnectingScreen(Screen):
                             res = self._input_service.start_streamer()
                         if inspect.isawaitable(res):
                             await asyncio.wait_for(res, timeout=5.0)
-                    if hasattr(self._input_service, "start_receiver"):
-                        res = self._input_service.start_receiver()
-                        if inspect.isawaitable(res):
-                            await asyncio.wait_for(res, timeout=5.0)
+                    # NOTE: The discoverer is the host/controller — it only captures and
+                    # streams input to the remote. It must NOT start the input receiver,
+                    # which would inject the host's own events locally.
                 except Exception as exc:
                     logger.warning(
                         f"Input streamer startup delayed or error: {exc}",
