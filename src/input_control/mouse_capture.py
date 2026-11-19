@@ -233,6 +233,15 @@ class MouseCapture:
         )
 
     def _on_pynput_move(self, x: int, y: int) -> None:
+        if self._renderer is not None:
+            if not self._renderer.is_focused:
+                return
+            win_x, win_y, win_w, win_h = self._renderer.window_geometry
+            if win_w > 0 and win_h > 0:
+                rel_x = x - win_x
+                rel_y = y - win_y
+                if rel_x < 0 or rel_x >= win_w or rel_y < 0 or rel_y >= win_h:
+                    return
         self._dispatch(f"move_abs:{x},{y}")
 
     def _on_pynput_click(self, x: int, y: int, button: Button, pressed: bool) -> None:
