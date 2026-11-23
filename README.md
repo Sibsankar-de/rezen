@@ -1,6 +1,6 @@
 # Rezen
 
-Rezen is an open-source, cross-platform tool for remote device and screen control over a local network. It lets you view and control machines across different operating systems (such as Linux and Windows) from your own device, with no accounts, no cloud, and no relay servers involved. Both devices just need to be on the same LAN.
+Rezen is an open-source, cross-platform tool for remote device and screen control over a local network. It lets you view and control machines across different operating systems (such as Linux and Windows) from your own device, with no accounts, no cloud, and no relay servers involved. Both devices just need to be on the same LAN. Discovery won't work on networks with client isolation enabled (e.g. most public Wi-Fi).
 
 It handles LAN device discovery automatically, streams the host screen using H.264 over TCP, and forwards keyboard and mouse input back to the host. It ships with a terminal UI as well as headless CLI modes for running on servers or scripts.
 
